@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' file: data: blob: https: http:; style-src 'self' 'unsafe-inline'; font-src 'self'; script-src 'self'; connect-src 'self' file:">
+<title>Slim Reaper</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div id="app">
+  <header class="titlebar">
+    <div class="logo" id="tb-logo"></div>
+    <span class="brand"><b>SLIM</b> REAPER</span>
+    <span class="ver" id="ver">v1.0</span>
+    <div class="tb-center"><div class="tb-pill" id="tb-pill"><span class="dot pulse"></span><span id="tb-pill-text">Reaping…</span></div></div>
+  </header>
+
+  <div class="body">
+    <nav class="rail" aria-label="Main">
+      <button data-nav="scan" class="active" title="Scan (Ctrl+1)"><i data-ico="scan"></i>Scan</button>
+      <button data-nav="library" title="Library (Ctrl+2)"><i data-ico="library"></i>Library<span class="badge" id="lib-badge"></span></button>
+      <button data-nav="dupes" title="Duplicate Finder (Ctrl+5)"><i data-ico="copy"></i>Dupes</button>
+      <button data-nav="history" title="History (Ctrl+3)"><i data-ico="history"></i>History</button>
+      <button data-nav="rules" title="Rules (Ctrl+4)"><i data-ico="rules"></i>Rules</button>
+      <span class="spacer"></span>
+      <button data-nav="settings" title="Settings (Ctrl+,)"><i data-ico="settings"></i>Settings</button>
+    </nav>
+
+    <!-- SCAN -->
+    <main class="page active" id="page-scan">
+      <div class="cmdbar">
+        <div class="urlbox">
+          <i data-ico="link" style="color:#8B93A7"></i>
+          <label for="url-input" class="sr">URLs to scan</label>
+          <input id="url-input" placeholder="Paste URLs — one or many, or drop a .txt file" title="Tip: ranges work, e.g. site.com/page/[1-20]" autocomplete="off" spellcheck="false">
+          <button class="btn" id="btn-test" title="Preview what a URL would grab, without downloading"><i data-ico="target"></i>Test</button>
+          <button class="btn" id="btn-import" title="Import a list of URLs (Ctrl+O)"><i data-ico="file"></i>Import</button>
+          <button class="btn" id="btn-add" style="background:#232A36;border-color:#343B4A;font-weight:600">+ Add to queue</button>
+        </div>
+        <div class="folderbox">
+          <i data-ico="folder" style="color:var(--accent)"></i>
+          <div class="where" id="folder-open" title="Open this folder">
+            <span class="label">Saving to</span>
+            <span class="path" id="folder-path">—</span>
+          </div>
+          <button class="btn" id="btn-folder">Change</button>
+          <button class="btn" id="btn-newfolder">New folder</button>
+        </div>
+        <div class="controls">
+          <button class="sq" id="btn-pause" aria-label="Pause" title="Pause / resume (Space)" disabled><i data-ico="pause"></i></button>
+          <button class="sq stop" id="btn-stop" aria-label="Stop" title="Stop (Ctrl+Shift+X)" disabled><i data-ico="stop"></i></button>
+          <button class="reap" id="btn-reap" title="Start (Ctrl+Enter)"><span class="k"></span><span id="reap-label">REAP</span></button>
+        </div>
+      </div>
+
+      <div class="cols">
+        <section class="panel queue" aria-label="URL queue">
+          <div class="phead">
+            <h2 class="h2">QUEUE</h2>
+            <span class="meta" id="q-meta">0 URLs</span>
+          </div>
+          <div class="qlist" id="qlist"></div>
+          <div class="qfoot">
+            <label for="preset-quick" class="sr">Preset</label>
+            <select class="select" id="preset-quick" title="Rules preset for this scan"></select>
+            <button class="btn sm ghost" id="btn-clear-done" title="Remove finished URLs">Clear done</button>
+            <button class="btn sm ghost" id="btn-clear-all" title="Remove everything">Clear</button>
+          </div>
+        </section>
+
+        <section class="panel wall" aria-label="Live harvest">
+          <div class="phead">
+            <div style="display:flex;align-items:baseline;gap:12px">
+              <h2 class="h2">LIVE HARVEST</h2>
+              <span class="live off" id="live"><span class="dot"></span><span id="live-text">idle</span></span>
+            </div>
+            <div class="chips" id="chips"></div>
+          </div>
+          <div class="grid" id="wall"></div>
+          <div class="empty" id="wall-empty">
+            <div class="logo-ghost" id="empty-logo"></div>
+            <div class="big">FEED THE REAPER</div>
+            <div>Paste a few URLs above and hit <b style="color:var(--accent)">REAP</b>. Images land in your folder the second they're found.</div>
+          </div>
+        </section>
+
+        <aside class="side">
+          <div class="panel stats">
+            <div>
+              <div class="label">Images saved</div>
+              <div class="bignum" id="s-saved">0</div>
+            </div>
+            <div class="sgrid">
+              <div><span class="label">Found</span><b id="s-found">0</b></div>
+              <div><span class="label">Skipped</span><b id="s-skipped">0</b></div>
+              <div><span class="label">Duplicates</span><b id="s-dupes">0</b></div>
+              <div><span class="label">Too small</span><b id="s-small">0</b></div>
+              <div><span class="label">Data</span><b id="s-bytes">0 MB</b></div>
+              <div><span class="label">Speed</span><b id="s-speed">—</b></div>
+              <div><span class="label">Elapsed</span><b id="s-elapsed">00:00</b></div>
+              <div><span class="label">ETA</span><b id="s-eta">—</b></div>
+            </div>
+            <div>
+              <div class="label" style="margin-bottom:6px">Images / sec · last 30s</div>
+              <div class="spark" id="spark"></div>
+            </div>
+          </div>
+          <div class="panel log">
+            <div class="lhead">
+              <h2 class="h2" style="font-size:14px">LOG</h2>
+              <div class="lfilters" id="log-filters">
+                <button data-lf="all" class="on">All</button><button data-lf="save">Saved</button><button data-lf="skip">Skipped</button><button data-lf="problem">Errors</button>
+              </div>
+              <button class="btn sm ghost icon" id="btn-log-export" title="Save log to a file"><i data-ico="download"></i></button>
+              <button class="btn sm ghost icon" id="btn-report" title="Report a problem (saves a file to send)"><i data-ico="bug"></i></button>
+            </div>
+            <div class="lines" id="log"></div>
+          </div>
+        </aside>
+      </div>
+    </main>
+
+    <!-- LIBRARY -->
+    <main class="page" id="page-library"><div class="scroll-page" id="library-root"></div></main>
+    <!-- DUPLICATES -->
+    <main class="page" id="page-dupes"><div class="scroll-page" id="dupes-root"></div></main>
+    <!-- HISTORY -->
+    <main class="page" id="page-history"><div class="scroll-page" id="history-root"></div></main>
+    <!-- RULES -->
+    <main class="page" id="page-rules"><div class="scroll-page" id="rules-root"></div></main>
+    <!-- SETTINGS -->
+    <main class="page" id="page-settings"><div class="scroll-page" id="settings-root"></div></main>
+  </div>
+
+  <footer class="statusbar">
+    <span class="writing" id="sb-state">● ready</span>
+    <span class="path" id="sb-path">Drop URLs anywhere, or paste with Ctrl+V</span>
+    <span class="right"><span id="sb-conc"></span><span id="sb-polite"></span><span id="sb-mem"></span></span>
+  </footer>
+</div>
+
+<!-- Image viewer -->
+<div class="viewer" id="viewer" role="dialog" aria-label="Image preview">
+  <div class="vtop">
+    <div style="display:flex;align-items:center;gap:12px;min-width:0">
+      <button class="btn icon" id="v-close" aria-label="Back" title="Close (Esc)"><i data-ico="back"></i></button>
+      <span class="name" id="v-name"></span>
+      <span class="count" id="v-count"></span>
+    </div>
+    <div class="zoom">
+      <button class="btn icon" id="v-zout" aria-label="Zoom out">−</button>
+      <span id="v-zlabel">Fit</span>
+      <button class="btn icon" id="v-zin" aria-label="Zoom in">+</button>
+      <button class="btn sm" id="v-fit">Fit</button>
+      <button class="btn sm" id="v-1to1">1:1</button>
+    </div>
+  </div>
+  <div class="vbody">
+    <div class="vstage-wrap">
+      <div class="vstage" id="v-stage">
+        <button class="vnav l" id="v-prev" aria-label="Previous image"><i data-ico="chevl"></i></button>
+        <img id="v-img" alt="">
+        <button class="vnav r" id="v-next" aria-label="Next image"><i data-ico="chevr"></i></button>
+      </div>
+      <div class="strip" id="v-strip"></div>
+    </div>
+    <aside class="vinfo" aria-label="Image details">
+      <div class="facts" id="v-facts"></div>
+      <div class="kv"><div class="label">Found on page</div><div class="v" id="v-page"></div></div>
+      <div class="kv"><div class="label">Image URL</div><div class="v" id="v-url"></div></div>
+      <div class="kv"><div class="label">Saved to</div><div class="v" id="v-path"></div></div>
+      <div><div class="label" style="margin-bottom:8px">Palette <span style="text-transform:none;letter-spacing:0">(click to copy)</span></div><div class="palette" id="v-palette"></div></div>
+      <div class="vacts">
+        <button class="btn primary wide" id="v-show">Show in folder</button>
+        <button class="btn" id="v-open">Open</button>
+        <button class="btn" id="v-copyimg">Copy image</button>
+        <button class="btn" id="v-copyurl">Copy URL</button>
+        <button class="btn" id="v-wall">Set as wallpaper</button>
+        <button class="btn warn" id="v-block">Never grab from here</button>
+        <button class="btn danger" id="v-delete">Delete</button>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<div class="selbar" id="selbar">
+  <span id="sel-count">0 selected</span>
+  <button class="btn sm" id="sel-copy">Copy to…</button>
+  <button class="btn sm" id="sel-move">Move to…</button>
+  <button class="btn sm" id="sel-clip">Copy paths</button>
+  <button class="btn sm danger" id="sel-del">Delete</button>
+  <button class="btn sm ghost" id="sel-clear">Clear</button>
+</div>
+<div class="ctx" id="ctx"></div>
+<div class="modal-bg" id="modal-bg"><div class="modal" id="modal"></div></div>
+<div class="toasts" id="toasts"></div>
+<div class="dropzone" id="dropzone"><div>DROP URLS TO REAP</div></div>
+
+<script src="logo.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

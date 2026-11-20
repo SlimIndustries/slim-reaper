@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; script-src 'self'">
+<title>Slim Reaper</title>
+<style>
+@font-face { font-family: 'Anton'; src: url('assets/fonts/Anton-Regular.ttf'); }
+@font-face { font-family: 'JetBrains Mono'; src: url('assets/fonts/JetBrainsMono-Regular.ttf'); }
+:root { --accent: #3BE3FF; --accent-d: #0B5370; }
+html, body { margin: 0; height: 100%; background: #07090D; color: #E6E9EF; overflow: hidden; -webkit-app-region: drag; user-select: none; }
+.wrap { height: 100%; display: flex; align-items: center; gap: 44px; padding: 0 56px; box-sizing: border-box; position: relative; border: 1px solid #1C2029; }
+.haze { position: absolute; left: -140px; top: 50%; width: 560px; height: 560px; margin-top: -280px; border-radius: 50%; background: radial-gradient(circle, color-mix(in srgb, var(--accent) 16%, transparent), transparent 65%); }
+.logo { position: relative; width: 270px; height: 310px; flex: 0 0 auto; animation: rise .6s ease-out both; }
+.txt { position: relative; display: flex; flex-direction: column; gap: 18px; width: 340px; animation: rise .6s .15s ease-out both; }
+.k { font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 4px; color: var(--accent); }
+.t { font-family: 'Anton', sans-serif; font-size: 30px; line-height: 1.15; letter-spacing: 1px; transform: skewX(-6deg); transform-origin: left; }
+.t span { color: var(--accent); }
+.bar { height: 6px; border-radius: 3px; background: #1A1F2A; overflow: hidden; margin-top: 8px; }
+.bar i { display: block; height: 6px; width: 0; border-radius: 3px; background: var(--accent); box-shadow: 0 0 12px var(--accent); animation: load 1.5s ease-in-out forwards; }
+.row { display: flex; justify-content: space-between; font-family: 'JetBrains Mono', monospace; font-size: 11.5px; color: #8B93A7; }
+@keyframes load { to { width: 100%; } }
+@keyframes rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+</style></head>
+<body><div class="wrap"><div class="haze"></div><div class="logo" id="logo"></div>
+<div class="txt"><div class="k">SLIM INDUSTRIES</div><div class="t">Point it at a page.<br><span>It takes every image.</span></div>
+<div><div class="bar"><i></i></div><div class="row" style="margin-top:10px"><span>sharpening the blade…</span><span id="v"></span></div></div></div></div>
+<script src="logo.js"></script><script src="splash.js"></script></body></html>
