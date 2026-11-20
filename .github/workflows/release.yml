@@ -1,0 +1,53 @@
+# Builds Slim Reaper on GitHub's Windows machines whenever you publish a Release,
+# then attaches the Setup and Portable .exe files to that Release.
+# The version number comes from the release tag you type (e.g. v1.3.0).
+name: Build Windows app
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Get the code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Use the release tag as the version number
+        if: github.event_name == 'release'
+        shell: bash
+        run: |
+          TAG="${{ github.event.release.tag_name }}"
+          npm version "${TAG#v}" --no-git-tag-version --allow-same-version
+
+      - name: Install
+        run: npm install
+
+      - name: Build the installer and portable .exe
+        run: npx electron-builder --win --publish never
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+
+      - name: Attach the .exe files to the release
+        if: github.event_name == 'release'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "${{ github.event.release.tag_name }}" dist/*.exe --clobber
+
+      - name: Keep the files (manual runs)
+        if: github.event_name != 'release'
+        uses: actions/upload-artifact@v4
+        with:
+          name: slim-reaper-windows
+          path: dist/*.exe
