@@ -38,6 +38,8 @@ Nothing to set up, no account, everything stays on your PC.
 - **Library tab removed.** Browse your folders in File Explorer; History has an **Open folder** button for each scan.
 - **Clear** button on the History page empties it in one click.
 - **Clear** button on the Scan page empties the image grid (files stay in your folders).
+- **Clean slate**: the eraser in the Log header clears the log, the numbers and the image grid in one click (files stay in your folders).
+- **Sign-ins cleaned up**: scans no longer keep cookies (they're wiped when you close the app). Only sites you log into with **Sign in to a site** are kept, shown in a collapsible list with **Sign out of all**.
 - **Right-click to paste**: right-click the URL box or the queue for Paste / Paste and add. Ctrl+V still works.
 - Re-scanning a thread still skips images already in its folder.
 

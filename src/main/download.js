@@ -18,7 +18,7 @@ function makeDownloadFn({ getSession, getRules, nodeFetch }) {
 
   return async function download(url, init = {}) {
     const rules = getRules() || {};
-    const ses = getSession(rules.useSignIns !== false);
+    const ses = getSession(rules.useSignIns !== false, url);
     const headers = Object.assign({}, init.headers);
 
     if (rules.proxy && ses && typeof ses.fetch === 'function') {

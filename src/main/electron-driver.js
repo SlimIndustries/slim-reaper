@@ -1,7 +1,8 @@
 'use strict';
 // Opens pages in hidden Chromium windows (offscreen) so scripts, lazy-loading and infinite
-// scroll all work like a real visit. Uses the "persist:reaper" session when "use my saved
-// sign-ins" is on, so anything you logged into in the Sign-ins window is reused.
+// scroll all work like a real visit. Pages use a throwaway in-memory session ("reaper-temp",
+// gone when the app closes). Only sites you logged into in the Sign-ins window use the saved
+// "persist:reaper" session, so no other site or tracker can leave cookies behind.
 const { BrowserWindow, session } = require('electron');
 
 const PERSIST = 'persist:reaper';
@@ -15,8 +16,12 @@ function prepareSession(ses) {
   ses.setPermissionRequestHandler((wc, perm, cb) => cb(false)); // no camera, mic, notifications, location…
 }
 
-function sessionFor(useSignIns) {
-  const ses = session.fromPartition(useSignIns ? PERSIST : TEMP);
+// Set by main.js: (url) => true when you signed in to that site
+let isSignedIn = () => false;
+function setSignedInCheck(fn) { isSignedIn = fn; }
+
+function sessionFor(useSignIns, url) {
+  const ses = session.fromPartition(useSignIns && url && isSignedIn(url) ? PERSIST : TEMP);
   prepareSession(ses);
   return ses;
 }
@@ -25,7 +30,7 @@ const SILENCE_DIALOGS = 'window.alert=function(){};window.confirm=function(){ret
 
 class ElectronDriver {
   async open(url, o = {}) {
-    const ses = sessionFor(o.useSignIns !== false);
+    const ses = sessionFor(o.useSignIns !== false, url);
     const win = new BrowserWindow({
       show: false, width: 1366, height: 900,
       webPreferences: { session: ses, offscreen: true, backgroundThrottling: false, sandbox: true, contextIsolation: true, nodeIntegration: false, spellcheck: false }
@@ -72,4 +77,4 @@ class ElectronDriver {
   }
 }
 
-module.exports = { ElectronDriver, sessionFor, PERSIST, TEMP };
+module.exports = { ElectronDriver, sessionFor, setSignedInCheck, PERSIST, TEMP };

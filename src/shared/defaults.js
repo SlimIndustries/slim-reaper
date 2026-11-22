@@ -96,6 +96,7 @@ const DEFAULT_APP = {
   clipboardWatch: false,
   showSplash: true,
   activePreset: 'photos',
+  signins: [],             // sites you logged into via Settings → Sign-ins
   autoStartOnAdd: true,     // paste a URL and it starts reaping right away
   watchNewThreads: false    // automatically watch image-board / Reddit threads you add
 };

@@ -10,7 +10,7 @@ const {
 const { Store } = require('./store');
 const { Engine } = require('./engine');
 const { Fetcher } = require('./fetcher');
-const { ElectronDriver, sessionFor, PERSIST, TEMP } = require('./electron-driver');
+const { ElectronDriver, sessionFor, setSignedInCheck, PERSIST, TEMP } = require('./electron-driver');
 const { ProcessorHost } = require('./processor-host');
 const { makeDownloadFn } = require('./download');
 const { FileWatcher } = require('./watcher');
@@ -18,7 +18,7 @@ const { findDuplicates } = require('./dupes');
 const os = require('os');
 const crypto = require('crypto');
 const { DEFAULT_RULES, BUILT_IN_PRESETS, ACCENTS, mergeRules } = require('../shared/defaults');
-const { extractUrls, hostOf } = require('../shared/urls');
+const { extractUrls, hostOf, siteOf } = require('../shared/urls');
 
 const APP_ID = 'com.slimindustries.slimreaper';
 const ICON = path.join(__dirname, '..', '..', 'build', 'icon.png');
@@ -142,7 +142,7 @@ function applyProxy(rules) {
 function makeFetcher() {
   // See download.js: Node fetch + your sign-in cookies, so the Referer header works.
   return new Fetcher(makeDownloadFn({
-    getSession: (useSignIns) => sessionFor(useSignIns),
+    getSession: (useSignIns, url) => sessionFor(useSignIns, url),
     getRules: () => (engine && engine.rules) || store.settings.rules
   }));
 }
@@ -299,34 +299,72 @@ function setWallpaper(file) {
   });
 }
 
+// ---------------- sign-ins ----------------
+// Only sites you log into with "Sign in to a site" are remembered: settings.app.signins =
+// [{ site, related: [other sites the login used, e.g. an accounts.* domain] }].
+// Everything else in the saved session (cookies from scans, trackers) is removed at startup.
+const cookieSite = (c) => siteOf('https://' + c.domain.replace(/^\./, ''));
+function signinList() { return Array.isArray(store.settings.app.signins) ? store.settings.app.signins : []; }
+function keptSites() { const k = new Set(); for (const s of signinList()) { k.add(s.site); (s.related || []).forEach((r) => k.add(r)); } return k; }
+function isSignedInUrl(url) { const site = siteOf(url); return !!site && signinList().some((s) => s.site === site); }
+async function removeCookies(ses, keep) {
+  const cookies = await ses.cookies.get({});
+  for (const c of cookies) {
+    if (keep && keep(cookieSite(c))) continue;
+    const url = `http${c.secure ? 's' : ''}://${c.domain.replace(/^\./, '')}${c.path}`;
+    try { await ses.cookies.remove(url, c.name); } catch { /* ignore */ }
+  }
+}
+async function cleanSavedSession() {
+  const ses = session.fromPartition(PERSIST);
+  if (!signinList().length) {
+    try { await ses.clearStorageData(); await ses.clearCache(); } catch { /* ignore */ }
+    return;
+  }
+  const keep = keptSites();
+  await removeCookies(ses, (site) => keep.has(site));
+  try { await ses.clearCache(); } catch { /* ignore */ }
+}
 async function listSignIns() {
   const ses = session.fromPartition(PERSIST);
-  const cookies = await ses.cookies.get({});
-  const byDomain = new Map();
-  for (const c of cookies) {
-    const d = c.domain.replace(/^\./, '').replace(/^www\./, '');
-    byDomain.set(d, (byDomain.get(d) || 0) + 1);
-  }
-  return [...byDomain.entries()].map(([domain, count]) => ({ domain, count })).sort((a, b) => a.domain.localeCompare(b.domain));
+  const cookies = await ses.cookies.get({}).catch(() => []);
+  return signinList().map((s) => {
+    const sites = new Set([s.site, ...(s.related || [])]);
+    return { domain: s.site, count: cookies.filter((c) => sites.has(cookieSite(c))).length };
+  }).sort((a, b) => a.domain.localeCompare(b.domain));
 }
 async function signOut(domain) {
-  const ses = session.fromPartition(PERSIST);
-  const cookies = await ses.cookies.get({});
-  for (const c of cookies) {
-    const d = c.domain.replace(/^\./, '').replace(/^www\./, '');
-    if (d === domain || d.endsWith('.' + domain)) {
-      const url = `http${c.secure ? 's' : ''}://${c.domain.replace(/^\./, '')}${c.path}`;
-      try { await ses.cookies.remove(url, c.name); } catch { /* ignore */ }
-    }
-  }
+  const list = signinList();
+  const rec = list.find((s) => s.site === domain);
+  store.saveSettings({ app: { signins: list.filter((s) => s.site !== domain) } });
+  const stillKept = keptSites();
+  const drop = new Set([domain, ...((rec && rec.related) || [])].filter((d) => !stillKept.has(d)));
+  await removeCookies(session.fromPartition(PERSIST), (site) => !drop.has(site));
+  await cleanSavedSession(); // and anything else that isn't a remaining sign-in
+}
+async function signOutAll() {
+  store.saveSettings({ app: { signins: [] } });
+  await cleanSavedSession();
 }
 function openSignInWindow(url) {
+  const start = /^https?:/i.test(url) ? url : 'https://' + url;
+  const site = siteOf(start);
+  if (!site) return;
+  const seen = new Set([site]);
   const w = new BrowserWindow({
     width: 1200, height: 860, title: 'Sign in — Slim Reaper', icon: fs.existsSync(ICO) ? ICO : ICON, parent: mainWin, autoHideMenuBar: true,
     webPreferences: { session: session.fromPartition(PERSIST), contextIsolation: true, sandbox: true }
   });
-  w.loadURL(/^https?:/i.test(url) ? url : 'https://' + url);
-  w.on('closed', () => send('signins-changed'));
+  const note = (u) => { const s = siteOf(u); if (s) seen.add(s); };
+  w.webContents.on('did-navigate', (e, u) => note(u));
+  w.webContents.on('did-redirect-navigation', (e, u) => note(u));
+  w.loadURL(start);
+  w.on('closed', () => {
+    const rest = signinList().filter((s) => s.site !== site);
+    rest.push({ site, related: [...seen].filter((s) => s !== site) });
+    store.saveSettings({ app: { signins: rest } });
+    send('signins-changed');
+  });
 }
 
 function csvEscape(v) { const s = String(v == null ? '' : v); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; }
@@ -602,6 +640,7 @@ function registerIpc() {
   ipcMain.handle('list-signins', () => listSignIns());
   ipcMain.handle('sign-in', (e, url) => { openSignInWindow(url); return true; });
   ipcMain.handle('sign-out', async (e, domain) => { await signOut(domain); return listSignIns(); });
+  ipcMain.handle('sign-out-all', async () => { await signOutAll(); return listSignIns(); });
   ipcMain.handle('run-schedules-now', () => { runDueSchedules(); return true; });
   ipcMain.handle('host-of', (e, u) => hostOf(u));
   ipcMain.on('play-done-sound', () => {});
@@ -616,6 +655,8 @@ app.on('second-instance', (e, argv) => {
 
 app.whenReady().then(() => {
   store = new Store(app.getPath('userData'));
+  setSignedInCheck(isSignedInUrl);
+  cleanSavedSession().catch(() => {}); // drop cookies from scans and trackers; keep real sign-ins only
   if (!store.settings.app.outputDir) store.saveSettings({ app: { outputDir: defaultOutDir() } });
   // Anything that was mid-scan when the app closed goes back to "queued"
   for (const q of store.settings.queue) if (['loading', 'scanning', 'downloading'].includes(q.status)) q.status = 'queued';

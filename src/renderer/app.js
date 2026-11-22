@@ -32,6 +32,7 @@ const ICONS = {
   target: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM12 12h.01',
   copy: 'M8 8h11v11H8zM5 16V5h11',
   plus: 'M12 5v14M5 12h14',
+  eraser: 'M8 20l-4-4L15 5l5 5-9 10zM9.5 10.5l5 5M13 20h7',
   check: 'M5 12l5 5 9-10',
   cut: 'M6 6a2.5 2.5 0 1 0 0 .1M6 18a2.5 2.5 0 1 0 0 .1M8 7.5l12 9M8 16.5l12-9',
   save: 'M5 3h11l3 3v15H5zM8 3v6h8V3M8 21v-7h8v7',
@@ -347,6 +348,7 @@ function updateControls() {
   reap.classList.toggle('paused', S.paused);
   $('#reap-label').textContent = S.running ? (S.paused ? 'PAUSED' : 'REAPING…') : 'REAP';
   $('#btn-pause').disabled = !S.running;
+  if ($('#btn-log-clear')) $('#btn-log-clear').disabled = S.running;
   $('#btn-stop').disabled = !S.running;
   $('#btn-pause').innerHTML = ico(S.paused ? 'play' : 'pause');
   $('#btn-pause').title = S.paused ? 'Resume (Space)' : 'Pause (Space)';
@@ -495,6 +497,17 @@ function clearWall() {
   S.images = []; S.sel.clear(); S.selAnchor = null;
   rerenderWall(); updateWallEmpty(); renderChipsSoon(); updateSelBar();
   toast(`Cleared ${fmtNum(n)} image${n === 1 ? '' : 's'} · files kept in your folders`);
+}
+// Log "Clear": wipe the log, the numbers, the grid and the status bar for a clean screen.
+// Files and History are untouched. Not while a scan is running.
+function cleanSlate() {
+  if (S.running) return toast('Stop the scan first, then clear', 'warn');
+  resetLive(); S.sel.clear(); S.selAnchor = null; updateSelBar();
+  ['#s-elapsed', '#s-speed', '#s-eta'].forEach((id) => { const el = $(id); if (el) el.textContent = id === '#s-elapsed' ? '00:00' : '—'; });
+  $('#sb-path').textContent = 'Drop URLs anywhere, or paste with Ctrl+V';
+  $('#live-text').textContent = 'idle';
+  S.saveTimes = []; tick();
+  toast('All clear · files kept in your folders');
 }
 // Right-click paste
 async function pasteAndAdd() {
@@ -987,10 +1000,14 @@ async function renderSettings() {
         ${tog('clipboardWatch', 'Watch the clipboard', 'Any URL you copy anywhere gets added to the queue automatically')}
         <div class="rowx"><div class="lbl"><div>Paste shortcut</div><div class="sub">Ctrl+V anywhere in the app adds the URLs you copied</div></div></div>
       </section>
-      <section class="card"><div class="ch">${ico('key')}<h2>SIGN-INS</h2><span class="x times" style="font-size:12px">${signins.length} site${signins.length === 1 ? '' : 's'}</span></div>
-        <div class="rowx stack"><div class="lbl"><div>Sign in to a site</div><div class="sub">Opens a browser window. Log in normally, close it, and scans can see what you can see.</div></div>
+      <section class="card"><div class="ch">${ico('key')}<h2>SIGN-INS</h2></div>
+        <div class="rowx stack"><div class="lbl"><div>Sign in to a site</div><div class="sub">Opens a browser window. Log in normally, close it, and scans of that site can see what you can see. Nothing else keeps cookies.</div></div>
           <div class="ctl" style="display:flex;gap:6px"><input class="input" id="signin-url" placeholder="https://site.com/login" style="flex:1"><button class="btn primary" id="signin-go">Open</button></div></div>
-        ${signins.map((s) => `<div class="rowx"><div class="lbl"><div class="mono" style="font-size:13px">${esc(s.domain)}</div><div class="sub">${s.count} cookie${s.count === 1 ? '' : 's'} saved</div></div><div class="ctl"><button class="btn sm" data-signout="${esc(s.domain)}">Sign out</button></div></div>`).join('') || '<div class="rowx"><div class="lbl"><div class="sub">No saved sign-ins yet.</div></div></div>'}
+        ${signins.length ? `<details class="signins" ${S.signinsOpen ? 'open' : ''}>
+          <summary class="rowx"><div class="lbl"><div>Signed in to ${signins.length} site${signins.length === 1 ? '' : 's'}</div><div class="sub">Click to ${S.signinsOpen ? 'hide' : 'show'}</div></div><div class="ctl"><span class="chev">${ico('chevr', 16)}</span></div></summary>
+          <div class="signin-list">${signins.map((x) => `<div class="rowx"><div class="lbl"><div class="mono" style="font-size:13px">${esc(x.domain)}</div><div class="sub">${x.count} cookie${x.count === 1 ? '' : 's'} saved</div></div><div class="ctl"><button class="btn sm" data-signout="${esc(x.domain)}">Sign out</button></div></div>`).join('')}</div>
+          <div class="rowx"><div class="lbl"></div><div class="ctl"><button class="btn sm danger" id="signout-all">Sign out of all</button></div></div>
+        </details>` : '<div class="rowx"><div class="lbl"><div class="sub">No sign-ins. Scans leave no cookies behind.</div></div></div>'}
       </section>
       <section class="card"><div class="ch">${ico('clock')}<h2>SCHEDULED SCANS</h2><button class="btn sm x" id="sched-add">+ New schedule</button></div>
         ${sched.map((s) => `<div class="rowx"><div class="lbl"><div>${esc(s.name)}</div><div class="sub">${s.urls.length} URL${s.urls.length === 1 ? '' : 's'} · every ${s.everyHours}h · ${s.lastRun ? 'last ran ' + new Date(s.lastRun).toLocaleString() : 'not run yet'}</div></div><div class="ctl"><button class="btn sm ghost" data-sedit="${s.id}">Edit</button><button class="btn sm ghost icon" data-sdel="${s.id}" aria-label="Delete schedule">${ico('trash', 14)}</button><button class="toggle" aria-pressed="${!!s.enabled}" data-stog="${s.id}" aria-label="Enabled"></button></div></div>`).join('') || '<div class="rowx"><div class="lbl"><div class="sub">Re-scan your favorite pages automatically and only save new images. Needs the app running (tray is fine).</div></div></div>'}
@@ -1040,6 +1057,7 @@ async function onSettingsClick(e) {
   if (b.dataset.accent) { saveApp({ accent: b.dataset.accent }); applyAccent(); renderSettings(); return; }
   if (b.dataset.thumb) { saveApp({ thumbSize: b.dataset.thumb }); applyAccent(); renderSettings(); renderChips(); return; }
   if (b.id === 'signin-go') { const u = $('#signin-url').value.trim(); if (!u) return toast('Type the site address first', 'warn'); R.signIn(u); return; }
+  if (b.id === 'signout-all') { await R.signOutAll(); toast('Signed out of everything'); S.signinsOpen = false; renderSettings(); return; }
   if (b.dataset.signout) { await R.signOut(b.dataset.signout); toast(`Signed out of ${esc(b.dataset.signout)}`); renderSettings(); return; }
   if (b.id === 'sched-add') return scheduleDialog();
   if (b.dataset.sedit) return scheduleDialog((S.st.settings.schedules || []).find((s) => s.id === b.dataset.sedit));
@@ -1344,6 +1362,7 @@ function wire() {
     if (text && /\n/.test(text.trim())) { e.preventDefault(); const urls = await R.extractUrls(text); if (urls.length) addUrls(urls); }
   });
   $('#wall-clear').onclick = clearWall;
+  $('#btn-log-clear').onclick = cleanSlate;
   // Right-click to paste (Ctrl+V still works)
   $('#url-input').addEventListener('contextmenu', (e) => { e.preventDefault(); urlBoxMenu(e.clientX, e.clientY); });
   $('#qlist').addEventListener('contextmenu', (e) => {
@@ -1419,6 +1438,7 @@ function wire() {
   $('#rules-root').addEventListener('change', (e) => { if (e.target.dataset.rt === 'ua') onRulesInput(e); if (e.target.classList.contains('preset-select') && e.target.value !== 'custom') applyPreset(e.target.value); });
   $('#rules-root').addEventListener('click', onRulesClick);
   $('#settings-root').addEventListener('click', onSettingsClick);
+  $('#settings-root').addEventListener('toggle', (e) => { if (e.target.classList && e.target.classList.contains('signins')) { S.signinsOpen = e.target.open; const sub = e.target.querySelector('summary .sub'); if (sub) sub.textContent = 'Click to ' + (e.target.open ? 'hide' : 'show'); } }, true);
   $('#history-root').addEventListener('click', onHistoryClick);
 
   // viewer

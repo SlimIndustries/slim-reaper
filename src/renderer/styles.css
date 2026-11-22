@@ -346,3 +346,11 @@ main.page.active { display: flex; }
 .qitem .st.watching { color: var(--accent); }
 .qitem .st.gone { color: var(--warn); }
 .qitem.watching { border-style: dashed; border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
+
+/* ---------- sign-ins dropdown ---------- */
+details.signins > summary { list-style: none; cursor: pointer; user-select: none; }
+details.signins > summary::-webkit-details-marker { display: none; }
+details.signins > summary:hover { background: rgba(255,255,255,.03); }
+details.signins .chev { display: inline-flex; color: var(--text2); transition: transform .15s; }
+details.signins[open] .chev { transform: rotate(90deg); color: var(--accent); }
+details.signins .signin-list { max-height: 260px; overflow-y: auto; }

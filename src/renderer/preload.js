@@ -51,6 +51,7 @@ contextBridge.exposeInMainWorld('reaper', {
   onFilesRemoved: (fn) => ipcRenderer.on('files-removed', (e, paths) => fn(paths)),
   onDupesProgress: (fn) => ipcRenderer.on('dupes-progress', (e, p) => fn(p)),
   listSignIns: call('list-signins'),
+  signOutAll: call('sign-out-all'),
   signIn: call('sign-in'),
   signOut: call('sign-out'),
   runSchedulesNow: call('run-schedules-now'),
