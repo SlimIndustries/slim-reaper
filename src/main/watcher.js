@@ -1,6 +1,6 @@
 'use strict';
 // Notices when reaped images are deleted outside the app (File Explorer, another program)
-// so they disappear from the wall, Library and History right away.
+// so they disappear from the wall and History right away.
 // Uses Windows' folder change notifications for speed, plus a light background check
 // as a safety net (folders outside the save folder, network drives, renamed folders).
 const fs = require('fs');

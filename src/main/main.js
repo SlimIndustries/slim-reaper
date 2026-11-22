@@ -495,7 +495,6 @@ function registerIpc() {
   ipcMain.handle('save-settings', (e, patch) => {
     store.saveSettings(patch);
     if (patch.app) {
-      if ('rememberHistory' in patch.app) store.setKeepHistory(!!patch.app.rememberHistory);
       if ('outputDir' in patch.app && watcher) watcher.watch([store.settings.app.outputDir]);
       if ('clipboardWatch' in patch.app) setClipboardWatch(!!store.settings.app.clipboardWatch);
       if ('launchAtStartup' in patch.app) { try { app.setLoginItemSettings({ openAtLogin: !!patch.app.launchAtStartup, path: process.env.PORTABLE_EXECUTABLE_FILE || process.execPath, args: ['--hidden'] }); } catch { /* ignore */ } }
@@ -534,11 +533,9 @@ function registerIpc() {
   ipcMain.handle('copy-text', (e, t) => { lastClip = String(t); clipboard.writeText(lastClip); return true; });
   ipcMain.handle('copy-image', (e, p) => copyImageToClipboard(p));
   ipcMain.handle('set-wallpaper', (e, p) => setWallpaper(p));
-  ipcMain.handle('trash', async (e, p) => {
-    const r = await trashFiles([p]);
-    return r.failed.length === 0;
-  });
+  // Used only by the Duplicate Finder: everywhere else, removing an image just hides it in the app
   ipcMain.handle('trash-files', (e, paths) => trashFiles(paths));
+  ipcMain.handle('remove-from-app', (e, paths) => store.hideImages(paths || []));
   ipcMain.handle('copy-files', (e, opts) => copyFiles(opts));
   ipcMain.on('start-drag', (e, paths) => startDrag(e.sender, paths));
   ipcMain.handle('preview-url', async (e, { url, rules }) => {
@@ -565,7 +562,6 @@ function registerIpc() {
   });
 
   ipcMain.handle('get-session-images', (e, id) => store.sessionImages(id));
-  ipcMain.handle('get-library', (e, limit) => store.library(limit || 3000));
   ipcMain.handle('get-history', () => store.history);
   ipcMain.handle('delete-session', (e, id) => { store.deleteSession(id); return store.history; });
   ipcMain.handle('clear-history', () => { const running = engine.running && currentSession ? currentSession.id : null; store.clearHistory(running); return store.history; });
@@ -601,30 +597,6 @@ function registerIpc() {
     } catch { return null; }
   });
   ipcMain.handle('forget-memory', () => { store.forgetAll(); return 0; });
-  // Moves a scan's images to the Recycle Bin, then removes folders it left empty.
-  ipcMain.handle('trash-session-files', async (e, id) => {
-    const imgs = store.sessionImages(id);
-    const r = await trashFiles(imgs.map((i) => i.path).filter(Boolean));
-    const dirs = [...new Set(imgs.map((i) => path.dirname(i.path)))].sort((a, b) => b.length - a.length);
-    for (const d of dirs) { try { if (!fs.readdirSync(d).length) fs.rmdirSync(d); } catch { /* not empty */ } }
-    if (!r.failed.length) store.deleteSession(id);
-    return { moved: r.moved, failed: r.failed.length, history: store.history };
-  });
-  // Moves the whole save folder to the Recycle Bin and starts fresh.
-  ipcMain.handle('trash-all-reaped', async (e, { forget }) => {
-    const dir = store.settings.app.outputDir || defaultOutDir();
-    if (engine.running) return { ok: false, error: 'Stop the scan first' };
-    let ok = true;
-    if (fs.existsSync(dir)) { try { await shell.trashItem(dir); } catch (err) { ok = false; } }
-    try { fs.mkdirSync(dir, { recursive: true }); } catch { /* ignore */ }
-    const all = store.allImagePaths();
-    for (const h of store.history.slice()) store.deleteSession(h.id);
-    store.forgetFiles(all);
-    if (watcher) watcher.setKnown([]);
-    send('files-removed', all);
-    if (forget) store.forgetAll();
-    return { ok, dir, memoryCount: store.memoryCount(), error: ok ? '' : 'Windows is still using some files. Close any folder windows showing them and try again.' };
-  });
 
   ipcMain.handle('list-signins', () => listSignIns());
   ipcMain.handle('sign-in', (e, url) => { openSignInWindow(url); return true; });

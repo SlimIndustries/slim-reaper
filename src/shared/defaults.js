@@ -94,10 +94,8 @@ const DEFAULT_APP = {
   closeToTray: false,
   launchAtStartup: false,
   clipboardWatch: false,
-  confirmDelete: true,
   showSplash: true,
   activePreset: 'photos',
-  rememberHistory: false,  // off: nothing about past scans is written to this PC
   autoStartOnAdd: true,     // paste a URL and it starts reaping right away
   watchNewThreads: false    // automatically watch image-board / Reddit threads you add
 };

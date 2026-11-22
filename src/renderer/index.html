@@ -18,8 +18,7 @@
   <div class="body">
     <nav class="rail" aria-label="Main">
       <button data-nav="scan" class="active" title="Scan (Ctrl+1)"><i data-ico="scan"></i>Scan</button>
-      <button data-nav="library" title="Library (Ctrl+2)"><i data-ico="library"></i>Library<span class="badge" id="lib-badge"></span></button>
-      <button data-nav="dupes" title="Duplicate Finder (Ctrl+5)"><i data-ico="copy"></i>Dupes</button>
+      <button data-nav="dupes" title="Duplicate Finder (Ctrl+2)"><i data-ico="copy"></i>Dupes</button>
       <button data-nav="history" title="History (Ctrl+3)"><i data-ico="history"></i>History</button>
       <button data-nav="rules" title="Rules (Ctrl+4)"><i data-ico="rules"></i>Rules</button>
       <span class="spacer"></span>
@@ -121,7 +120,6 @@
     </main>
 
     <!-- LIBRARY -->
-    <main class="page" id="page-library"><div class="scroll-page" id="library-root"></div></main>
     <!-- DUPLICATES -->
     <main class="page" id="page-dupes"><div class="scroll-page" id="dupes-root"></div></main>
     <!-- HISTORY -->
@@ -177,7 +175,7 @@
         <button class="btn" id="v-copyurl">Copy URL</button>
         <button class="btn" id="v-wall">Set as wallpaper</button>
         <button class="btn warn" id="v-block">Never grab from here</button>
-        <button class="btn danger" id="v-delete">Delete</button>
+        <button class="btn" id="v-delete" title="Removes it from the app. The file stays on your PC.">Remove</button>
       </div>
     </aside>
   </div>
@@ -188,7 +186,7 @@
   <button class="btn sm" id="sel-copy">Copy to…</button>
   <button class="btn sm" id="sel-move">Move to…</button>
   <button class="btn sm" id="sel-clip">Copy paths</button>
-  <button class="btn sm danger" id="sel-del">Delete</button>
+  <button class="btn sm" id="sel-del" title="Removes them from the app. The files stay on your PC.">Remove</button>
   <button class="btn sm ghost" id="sel-clear">Clear</button>
 </div>
 <div class="ctx" id="ctx"></div>

@@ -61,7 +61,7 @@ const S = {
   queue: [], running: false, paused: false,
   images: [], stats: null, logs: [], logFilter: 'all', chip: 'all',
   saveTimes: [], byteTimes: [], startedAt: 0, page: 'scan',
-  library: null, libFilter: { q: '', fmt: 'all', sort: 'new', session: '' }, libShown: 400,
+
   viewer: { list: [], i: 0 },
   sel: new Set(), selAnchor: null, dragOutAt: 0,
   dupes: { dir: '', recursive: true, similarity: 90, running: false, progress: null, groups: null, ticked: new Set(), scanned: 0 }
@@ -153,7 +153,6 @@ function go(page) {
   $$('.rail button').forEach((b) => b.classList.toggle('active', b.dataset.nav === page));
   $$('main.page').forEach((m) => m.classList.toggle('active', m.id === 'page-' + page));
   const sp = $(`#page-${page} .scroll-page`); if (sp) sp.scrollTop = 0;
-  if (page === 'library') renderLibrary(true);
   if (page === 'history') renderHistory();
   if (page === 'rules') renderRules();
   if (page === 'settings') renderSettings();
@@ -385,7 +384,7 @@ function onEvents(batch) {
       default: break;
     }
   }
-  if (newImages.length) { for (const img of newImages) S.images.push(img); addTiles(newImages); S.library = null; }
+  if (newImages.length) { for (const img of newImages) S.images.push(img); addTiles(newImages); }
   queueChanged.forEach((id) => updateQueueItem(id));
   if (queueChanged.size) saveQueue();
   if (statsChanged) renderStats();
@@ -483,11 +482,11 @@ function addTiles(imgs) {
 }
 function rerenderWall() {
   const list = S.images.filter(wallMatch).slice(-WALL_MAX).reverse();
-  $('#wall').innerHTML = list.map((img) => tileHtml(img, false)).join('') + (S.images.length > WALL_MAX ? `<div class="more">Showing the newest ${WALL_MAX}. Everything is in your folder and the Library.</div>` : '');
+  $('#wall').innerHTML = list.map((img) => tileHtml(img, false)).join('') + (S.images.length > WALL_MAX ? `<div class="more">Showing the newest ${WALL_MAX}. Everything is in your folder.</div>` : '');
   updateWallEmpty();
 }
 function updateWallEmpty() { $('#wall-empty').classList.toggle('hidden', S.images.length > 0); }
-function imgById(id) { return S.images.find((x) => x.id === id) || (S.library || []).find((x) => x.id === id); }
+function imgById(id) { return S.images.find((x) => x.id === id); }
 
 // =====================================================================
 // STATS + LOG
@@ -613,22 +612,19 @@ function setZoom(s, center, cx, cy) {
 function viewerStep(d) { const n = S.viewer.list.length; if (!n) return; S.viewer.i = (S.viewer.i + d + n) % n; showViewerImage(); }
 function currentViewerImg() { return S.viewer.list[S.viewer.i]; }
 
-async function deleteImage(img, fromViewer) {
-  if (S.app.confirmDelete) {
-    const ok = await confirmBox('Delete this image?', `<b>${esc(baseName(img.path))}</b> goes to the Recycle Bin.`, 'Delete', true);
-    if (!ok) return;
-  }
-  const ok = await R.trash(img.path);
-  if (!ok) return toast("Couldn't delete it (maybe already gone)", 'warn');
+// Removing an image only takes it out of the app. The file stays in File Explorer.
+async function removeImage(img, fromViewer) {
+  if (!img) return;
+  await R.removeFromApp([img.path]);
   S.images = S.images.filter((x) => x.path !== img.path);
-  if (S.library) S.library = S.library.filter((x) => x.path !== img.path);
   $$(`[data-img="${CSS.escape(img.id)}"]`).forEach((t) => t.remove());
+  S.sel.delete(img.id);
   if (fromViewer) {
     S.viewer.list = S.viewer.list.filter((x) => x.path !== img.path);
     if (!S.viewer.list.length) closeViewer(); else { S.viewer.i = Math.min(S.viewer.i, S.viewer.list.length - 1); showViewerImage(); }
   }
-  updateWallEmpty();
-  toast('Moved to the Recycle Bin');
+  updateWallEmpty(); renderChipsSoon(); updateSelBar();
+  toast('Removed from the app · file kept');
 }
 async function blockSite(img) {
   const host = hostOf(img.url && !img.url.startsWith('data:') ? img.url : img.pageUrl);
@@ -652,7 +648,7 @@ function imageMenu(img, x, y, list, idx) {
     { label: 'Set as wallpaper', icon: 'monitor', fn: async () => toast((await R.setWallpaper(img.path)) ? 'Wallpaper set' : "Couldn't set wallpaper", 'warn') },
     '-',
     { label: 'Never grab from this site', icon: 'shield', cls: 'warn', fn: () => blockSite(img) },
-    { label: 'Delete', icon: 'trash', cls: 'danger', fn: () => deleteImage(img, false) }
+    { label: 'Remove from app', icon: 'x', fn: () => removeImage(img, false) }
   ]);
 }
 
@@ -866,14 +862,10 @@ async function savePresetDialog() {
 async function renderHistory() {
   const root = $('#history-root');
   const hist = await R.getHistory();
-  const keep = !!S.app.rememberHistory;
   const totals = hist.reduce((a, h) => ({ saved: a.saved + (h.saved || 0), bytes: a.bytes + (h.bytes || 0) }), { saved: 0, bytes: 0 });
   root.innerHTML = `
-    <div class="page-head"><div><h1>History</h1><p>${hist.length ? `${fmtNum(hist.length)} scans · ${fmtNum(totals.saved)} images · ${fmtBytes(totals.bytes)} reaped ${keep ? 'all-time' : 'this session'}` : (keep ? 'Every scan you run shows up here.' : 'Scans you run show up here until you close Slim Reaper.')}</p></div>
-      <div style="display:flex;gap:8px;align-items:center">${hist.length ? `<button class="btn sm danger" data-hclear>${ico('trash', 14)} Clear history</button>` : ''}</div></div>
-    <div class="rowx hist-mode" style="margin-bottom:14px;padding:12px 16px;border:1px solid var(--line);border-radius:12px;background:var(--panel)">
-      <div class="lbl"><div>${keep ? 'History is ON' : 'History is OFF'}</div><div class="sub">${keep ? 'Past scans are saved on this PC between runs.' : 'Nothing about your scans is saved to this PC. Everything here disappears when you close the app.'}</div></div>
-      <div class="ctl"><button class="toggle" aria-pressed="${keep}" data-hkeep aria-label="Remember history"></button></div></div>
+    <div class="page-head"><div><h1>History</h1><p>${hist.length ? `${fmtNum(hist.length)} scan${hist.length === 1 ? '' : 's'} · ${fmtNum(totals.saved)} images · ${fmtBytes(totals.bytes)} this session` : 'Scans you run show up here until you close Slim Reaper.'}</p></div>
+      <div style="display:flex;gap:8px;align-items:center">${hist.length ? `<button class="btn sm danger" data-hclear>${ico('x', 14)} Clear</button>` : ''}</div></div>
     <div class="hlist">${hist.map((h) => `
       <div class="hitem" data-h="${esc(h.id)}">
         <div class="thumbs" data-hthumbs="${esc(h.id)}"></div>
@@ -883,14 +875,13 @@ async function renderHistory() {
           <span class="nums"><span><b>${fmtNum(h.saved)}</b> saved</span><span>${fmtNum(h.skipped)} skipped</span><span>${fmtBytes(h.bytes || 0)}</span><span class="times" title="${esc(h.outDir)}">${esc(h.outDir)}</span></span>
         </div>
         <div class="acts">
-          <button class="btn sm" data-ha="images">Images</button>
+          <button class="btn sm" data-ha="folder">${ico('folder', 14)} Open folder</button>
           <button class="btn sm" data-ha="rerun" title="Put these URLs back in the queue">Re-run</button>
           <button class="btn sm" data-ha="rename" title="Rename the folder these images are in">Rename</button>
-          <button class="btn sm icon" data-ha="folder" title="Open folder">${ico('folder', 15)}</button>
           <button class="btn sm icon" data-ha="report" title="Export CSV report">${ico('download', 15)}</button>
-          <button class="btn sm icon ghost" data-ha="delete" title="Remove from history (files stay)">${ico('trash', 15)}</button>
+          <button class="btn sm icon ghost" data-ha="delete" title="Remove from History (files stay)">${ico('x', 15)}</button>
         </div>
-      </div>`).join('') || `<div class="empty"><div class="big">NOTHING REAPED YET</div><div>Run a scan and it'll be logged here with everything it saved.</div></div>`}</div>`;
+      </div>`).join('') || `<div class="empty"><div class="big">NOTHING REAPED YET</div><div>Run a scan and it'll show here until you close the app. Nothing is saved to your PC.</div></div>`}</div>`;
   for (const h of hist.slice(0, 40)) {
     R.getSessionImages(h.id).then((imgs) => {
       const box = $(`[data-hthumbs="${CSS.escape(h.id)}"]`); if (!box) return;
@@ -899,17 +890,11 @@ async function renderHistory() {
   }
 }
 async function onHistoryClick(e) {
-  if (e.target.closest('[data-hkeep]')) { await saveApp({ rememberHistory: !S.app.rememberHistory }); toast(S.app.rememberHistory ? 'History will be saved from now on' : 'History off — saved history wiped from this PC'); return renderHistory(); }
-  if (e.target.closest('[data-hclear]')) {
-    const r = await modal({ title: 'Clear history?', ok: 'Clear history', danger: true, body: `<div style="color:var(--text2);line-height:1.5">Removes every scan from History${S.running ? ' (except the one running now)' : ''}. <b>Your image files are not touched.</b></div>` });
-    if (!r) return;
-    await R.clearHistory(); S.library = null; toast('History cleared'); return renderHistory();
-  }
+  if (e.target.closest('[data-hclear]')) { await R.clearHistory(); toast('History cleared · files kept'); return renderHistory(); }
   const b = e.target.closest('[data-ha]'); if (!b) return;
   const id = b.closest('[data-h]').dataset.h;
   const hist = await R.getHistory(); const h = hist.find((x) => x.id === id); if (!h) return;
   const a = b.dataset.ha;
-  if (a === 'images') { S.libFilter.session = id; go('library'); }
   if (a === 'rerun') { await addUrls(h.urls || [], { silent: true }); S.queue.forEach((q) => { if ((h.urls || []).includes(q.url) && !ACTIVE.includes(q.status)) Object.assign(q, { status: 'queued', note: 'Waiting', progress: 0 }); }); renderQueue(); saveQueue(); go('scan'); toast(`${(h.urls || []).length} URL(s) back in the queue — hit REAP`); }
   if (a === 'folder') { const f = await R.sessionFolders(id); R.openPath(f.length === 1 && f[0].exists ? f[0].dir : h.outDir); }
   if (a === 'rename') {
@@ -926,46 +911,8 @@ async function onHistoryClick(e) {
     renderHistory();
   }
   if (a === 'report') R.exportReport(id);
-  if (a === 'delete') {
-    const r = await modal({ title: 'Delete this scan?', ok: 'Delete', danger: true, body: `<label>What should go?<select class="select" name="mode"><option value="files">The ${fmtNum(h.saved)} images it saved AND the record (images → Recycle Bin)</option><option value="record">Only the record (keep the image files)</option></select></label><div class="times" style="font-size:12px">Deleting from here never needs File Explorer, so Windows can't block it.</div>` });
-    if (!r) return;
-    if (r.mode === 'files') { S.quietRemoval = true; const res = await R.trashSessionFiles(id); toast(`Moved ${fmtNum(res.moved)} images to the Recycle Bin${res.failed ? ` · ${res.failed} in use` : ''}`, res.failed ? 'warn' : ''); }
-    else await R.deleteSession(id);
-    S.library = null; renderHistory();
-  }
-}
+  if (a === 'delete') { await R.deleteSession(id); renderHistory(); }
 
-// =====================================================================
-// LIBRARY
-// =====================================================================
-async function renderLibrary(reload) {
-  const root = $('#library-root');
-  if (reload || !S.library) { S.library = await R.getLibrary(8000); S.libShown = 400; }
-  const hist = await R.getHistory();
-  const f = S.libFilter;
-  let list = S.library.slice();
-  if (f.session) list = list.filter((x) => x.sessionId === f.session);
-  if (f.fmt !== 'all') list = list.filter((x) => chipMatch(x, f.fmt));
-  if (f.q) { const q = f.q.toLowerCase(); list = list.filter((x) => (x.path + ' ' + x.url + ' ' + (x.title || '')).toLowerCase().includes(q)); }
-  if (f.sort === 'big') list.sort((a, b) => (b.w * b.h) - (a.w * a.h));
-  else if (f.sort === 'heavy') list.sort((a, b) => b.bytes - a.bytes);
-  else if (f.sort === 'old') list.reverse();
-  S.libList = list;
-  const sessOpts = `<option value="">All scans</option>` + hist.map((h) => `<option value="${esc(h.id)}" ${f.session === h.id ? 'selected' : ''}>${new Date(h.startedAt).toLocaleDateString()} · ${esc(shortUrl((h.urls || [])[0] || '').slice(0, 40))} (${h.saved})</option>`).join('');
-  root.innerHTML = `
-    <div class="page-head">
-      <div><h1>Library</h1><p>${fmtNum(list.length)} image${list.length === 1 ? '' : 's'}${f.session || f.q || f.fmt !== 'all' ? ' match' : ' reaped so far'}</p></div>
-      <div class="libbar">
-        <input class="input" id="lib-q" placeholder="Search file name, site, page title…" value="${esc(f.q)}" aria-label="Search library">
-        <select class="select" id="lib-session" style="width:260px" aria-label="Scan">${sessOpts}</select>
-        <select class="select" id="lib-sort" aria-label="Sort">${[['new', 'Newest first'], ['old', 'Oldest first'], ['big', 'Biggest dimensions'], ['heavy', 'Largest files']].map(([v, t]) => `<option value="${v}" ${f.sort === v ? 'selected' : ''}>${t}</option>`).join('')}</select>
-      </div>
-    </div>
-    <div class="chips" id="lib-chips">${FMT_CHIPS.map(([k, label]) => `<button class="chip ${f.fmt === k ? 'on' : ''}" data-lchip="${k}">${label}</button>`).join('')}</div>
-    <div class="grid" id="lib-grid">${list.slice(0, S.libShown).map((img) => tileHtml(img, false)).join('')}</div>
-    ${list.length > S.libShown ? `<div style="text-align:center"><button class="btn" id="lib-more">Show more (${fmtNum(list.length - S.libShown)} left)</button></div>` : ''}
-    ${!list.length ? `<div class="empty"><div class="big">${S.library.length ? 'NO MATCHES' : 'LIBRARY IS EMPTY'}</div><div>${S.library.length ? 'Try a different search or filter.' : 'Everything you reap shows up here.'}</div></div>` : ''}`;
-  $$('#lib-grid img').forEach((im) => { im.onerror = () => { const t = im.closest('.tile'); if (t) t.style.display = 'none'; }; });
 }
 
 // =====================================================================
@@ -1000,7 +947,6 @@ async function renderSettings() {
         ${tog('minimizeToTray', 'Minimize to tray', 'Keeps scanning in the background; the tray icon has pause/stop')}
         ${tog('closeToTray', 'Close button hides to tray', 'Quit from the tray icon instead')}
         ${tog('launchAtStartup', 'Start with Windows', 'Starts hidden in the tray so scheduled scans can run')}
-        ${tog('confirmDelete', 'Ask before deleting images')}
       </section>
       <section class="card"><div class="ch">${ico('clipboard')}<h2>CLIPBOARD</h2></div>
         ${tog('clipboardWatch', 'Watch the clipboard', 'Any URL you copy anywhere gets added to the queue automatically')}
@@ -1015,13 +961,11 @@ async function renderSettings() {
         ${sched.map((s) => `<div class="rowx"><div class="lbl"><div>${esc(s.name)}</div><div class="sub">${s.urls.length} URL${s.urls.length === 1 ? '' : 's'} · every ${s.everyHours}h · ${s.lastRun ? 'last ran ' + new Date(s.lastRun).toLocaleString() : 'not run yet'}</div></div><div class="ctl"><button class="btn sm ghost" data-sedit="${s.id}">Edit</button><button class="btn sm ghost icon" data-sdel="${s.id}" aria-label="Delete schedule">${ico('trash', 14)}</button><button class="toggle" aria-pressed="${!!s.enabled}" data-stog="${s.id}" aria-label="Enabled"></button></div></div>`).join('') || '<div class="rowx"><div class="lbl"><div class="sub">Re-scan your favorite pages automatically and only save new images. Needs the app running (tray is fine).</div></div></div>'}
       </section>
       <section class="card"><div class="ch">${ico('brain')}<h2>FILES & DATA</h2></div>
-        ${tog('rememberHistory', 'Remember history', 'Off: scans only show in History until you close the app, and nothing about them is saved to this PC. Turning it off wipes saved history. Duplicate skipping works either way.')}
-        <div class="rowx"><div class="lbl"><div>Clear history</div><div class="sub">Removes every scan from History. Image files stay where they are.</div></div><div class="ctl"><button class="btn sm" id="clear-hist">Clear history</button></div></div>
-        <div class="rowx"><div class="lbl"><div>Delete all reaped images</div><div class="sub">Moves your whole save folder to the Recycle Bin and clears History — no File Explorer needed</div></div><div class="ctl"><button class="btn sm danger" id="del-all">Delete all…</button></div></div>
+        <div class="rowx"><div class="lbl"><div>Nothing is remembered</div><div class="sub">History lasts until you close the app. Removing things in Slim Reaper never deletes files from your PC. Only your settings are saved.</div></div></div>
         <div class="rowx"><div class="lbl"><div>Default save folder</div><div class="sub mono" style="word-break:break-all">${esc(a.outputDir || S.st.defaultOutDir)}</div></div><div class="ctl"><button class="btn sm" id="set-folder">Change</button></div></div>
       </section>
       <section class="card"><div class="ch">${ico('keyboard')}<h2>KEYBOARD SHORTCUTS</h2></div>
-        ${[['Start reaping', 'Ctrl + Enter'], ['Pause / resume', 'Space'], ['Stop', 'Ctrl + Shift + X'], ['Paste URLs from clipboard', 'Ctrl + V'], ['Import a URL list', 'Ctrl + O'], ['Scan · Library · History · Rules · Dupes', 'Ctrl + 1 … 5'], ['Select several images', 'Ctrl/Shift + click · Ctrl + A'], ['Delete selected', 'Delete'], ['Settings', 'Ctrl + ,'], ['Viewer: previous / next', '← →'], ['Viewer: zoom', 'Mouse wheel · + / − · 0 fit · 1 actual size'], ['Viewer: delete', 'Delete']].map(([k, v]) => `<div class="rowx"><div class="lbl"><div>${k}</div></div><div class="ctl"><span class="times" style="font-size:12px">${v}</span></div></div>`).join('')}
+        ${[['Start reaping', 'Ctrl + Enter'], ['Pause / resume', 'Space'], ['Stop', 'Ctrl + Shift + X'], ['Paste URLs from clipboard', 'Ctrl + V'], ['Import a URL list', 'Ctrl + O'], ['Scan · Dupes · History · Rules', 'Ctrl + 1 … 4'], ['Select several images', 'Ctrl/Shift + click · Ctrl + A'], ['Remove selected from the app', 'Delete'], ['Settings', 'Ctrl + ,'], ['Viewer: previous / next', '← →'], ['Viewer: zoom', 'Mouse wheel · + / − · 0 fit · 1 actual size'], ['Viewer: remove from the app', 'Delete']].map(([k, v]) => `<div class="rowx"><div class="lbl"><div>${k}</div></div><div class="ctl"><span class="times" style="font-size:12px">${v}</span></div></div>`).join('')}
       </section>
       <section class="card"><div class="ch">${ico('info')}<h2>ABOUT</h2></div>
         <div class="rowx" style="gap:18px;justify-content:flex-start"><div style="width:84px;height:96px">${window.reaperSvg({ text: true })}</div><div class="lbl"><div class="brand" style="font-size:22px;transform:skewX(-8deg);transform-origin:left"><b>SLIM</b> REAPER</div><div class="sub">Version ${esc(S.st.version)} · A Slim Industries app</div><div class="sub">slimindustries.apps@gmail.com</div></div></div>
@@ -1069,20 +1013,7 @@ async function onSettingsClick(e) {
   if (b.id === 'mem-forget') { if (!(await confirmBox('Forget all remembered images?', 'Future scans may save images you already have (unless they\'re still in the output folder).', 'Forget', true))) return; S.memoryCount = await R.forgetMemory(); renderSettings(); updateStatusBar(); return; }
   if (b.id === 'set-folder') return changeFolder().then(renderSettings);
   if (b.id === 'report-btn') return reportProblem();
-  if (b.id === 'clear-hist') {
-    const r = await modal({ title: 'Clear history?', ok: 'Clear history', danger: true, body: `<div style="color:var(--text2);line-height:1.5">Removes every scan from History. <b>Your image files are not touched.</b></div>` });
-    if (!r) return;
-    await R.clearHistory(); S.library = null; toast('History cleared'); return;
-  }
-  if (b.id === 'del-all') {
-    if (S.running) return toast('Stop the scan first', 'warn');
-    const r = await modal({ title: 'Delete ALL reaped images?', ok: 'Delete everything', danger: true, body: `<div style="color:var(--text2);line-height:1.5">Moves <b class="mono">${esc(S.app.outputDir)}</b> and everything in it to the Recycle Bin, and clears History.</div><label style="flex-direction:row;align-items:center;gap:8px;color:var(--text2)"><input type="checkbox" name="forget" checked> Also forget them, so future scans can download them again</label>` });
-    if (!r) return;
-    S.quietRemoval = true;
-    const res = await R.trashAllReaped({ forget: !!r.forget });
-    if (!res.ok) toast(esc(res.error || 'Some files are in use'), 'warn'); else toast('All reaped images moved to the Recycle Bin');
-    S.memoryCount = res.memoryCount; S.images = []; S.library = null; rerenderWall(); renderSettings(); updateStatusBar();
-  }
+
   if (b.id === 'set-export') return R.exportSettings();
   if (b.id === 'set-import') { const s = await R.importSettings(); if (s) { S.rules = s.rules; S.presets = s.presets; Object.assign(S.app, s.app); applyAccent(); renderSettings(); renderPresetSelects(); toast('Settings imported'); } }
 }
@@ -1116,10 +1047,8 @@ let removedToastN = 0, removedToastT = null;
 function onFilesRemoved(paths) {
   const gone = new Set(paths);
   const ids = new Set();
-  for (const list of [S.images, S.library || []]) for (const x of list) if (gone.has(x.path)) ids.add(x.id);
+  for (const x of S.images) if (gone.has(x.path)) ids.add(x.id);
   S.images = S.images.filter((x) => !gone.has(x.path));
-  if (S.library) S.library = S.library.filter((x) => !gone.has(x.path));
-  if (S.libList) S.libList = S.libList.filter((x) => !gone.has(x.path));
   ids.forEach((id) => { $$(`[data-img="${CSS.escape(id)}"]`).forEach((t) => t.remove()); S.sel.delete(id); });
   if (S.dupes.groups) {
     S.dupes.groups = S.dupes.groups.map((g) => Object.assign({}, g, { items: g.items.filter((i) => !gone.has(i.path)) })).filter((g) => g.items.length > 1);
@@ -1134,7 +1063,6 @@ function onFilesRemoved(paths) {
     else S.viewer.i = Math.max(0, S.viewer.list.indexOf(cur));
   }
   updateWallEmpty(); renderChipsSoon(); updateSelBar();
-  if (S.page === 'library') renderLibrary(false);
   removedToastN += paths.length;
   clearTimeout(removedToastT);
   removedToastT = setTimeout(() => { if (removedToastN && !S.quietRemoval) toast(`${fmtNum(removedToastN)} image${removedToastN > 1 ? 's' : ''} removed`); removedToastN = 0; S.quietRemoval = false; }, 700);
@@ -1143,11 +1071,11 @@ function onFilesRemoved(paths) {
 // =====================================================================
 // MULTI-SELECT (Ctrl/Shift click, Ctrl+A)
 // =====================================================================
-function gridList() { return S.page === 'library' ? (S.libList || []) : S.images.filter(wallMatch).slice().reverse(); }
+function gridList() { return S.images.filter(wallMatch).slice().reverse(); }
 function selectedImages() { const all = gridList(); return all.filter((x) => S.sel.has(x.id)); }
 function updateSelBar() {
   const n = S.sel.size;
-  $('#selbar').classList.toggle('on', n > 0 && (S.page === 'scan' || S.page === 'library'));
+  $('#selbar').classList.toggle('on', n > 0 && S.page === 'scan');
   $('#sel-count').textContent = `${fmtNum(n)} selected`;
 }
 function paintSelection() { $$('.tile[data-img]').forEach((t) => t.classList.toggle('sel', S.sel.has(t.dataset.img))); updateSelBar(); }
@@ -1164,13 +1092,14 @@ function tileClick(e, id) {
   if (S.sel.size) { clearSelection(); }
   return false;
 }
-async function deleteSelected() {
+async function removeSelected() {
   const imgs = selectedImages(); if (!imgs.length) return;
-  if (S.app.confirmDelete && !(await confirmBox(`Delete ${imgs.length} image${imgs.length > 1 ? 's' : ''}?`, 'They go to the Recycle Bin.', 'Delete', true))) return;
-  S.quietRemoval = true;
-  const r = await R.trashFiles(imgs.map((x) => x.path));
-  clearSelection();
-  toast(`Deleted ${fmtNum(r.moved + r.gone)}${r.failed.length ? ` · ${r.failed.length} couldn't be deleted (in use?)` : ''}`, r.failed.length ? 'warn' : '');
+  const gone = new Set(imgs.map((x) => x.path));
+  await R.removeFromApp([...gone]);
+  S.images = S.images.filter((x) => !gone.has(x.path));
+  imgs.forEach((x) => $$(`[data-img="${CSS.escape(x.id)}"]`).forEach((t) => t.remove()));
+  clearSelection(); updateWallEmpty(); renderChipsSoon();
+  toast(`Removed ${fmtNum(imgs.length)} from the app · files kept`);
 }
 async function copyMoveSelected(move) {
   const imgs = selectedImages(); if (!imgs.length) return;
@@ -1412,7 +1341,7 @@ function wire() {
   document.addEventListener('dragstart', (e) => {
     const t = e.target.closest && e.target.closest('.tile[data-img]'); if (!t) return;
     e.preventDefault();
-    const all = (S.page === 'library' ? S.libList : S.images) || [];
+    const all = S.images || [];
     const img = all.find((x) => x.id === t.dataset.img); if (!img) return;
     const paths = S.sel.has(img.id) ? selectedImages().map((x) => x.path) : [img.path];
     S.dragOutAt = Date.now();
@@ -1423,14 +1352,14 @@ function wire() {
   $('#btn-report').onclick = reportProblem;
   $('#sel-copy').onclick = () => copyMoveSelected(false);
   $('#sel-move').onclick = () => copyMoveSelected(true);
-  $('#sel-del').onclick = deleteSelected;
+  $('#sel-del').onclick = removeSelected;
   $('#sel-clip').onclick = () => { R.copyText(selectedImages().map((x) => x.path).join('\r\n')); toast('File paths copied'); };
   $('#sel-clear').onclick = clearSelection;
   $('#dupes-root').addEventListener('click', onDupesClick);
   R.onFilesRemoved(onFilesRemoved);
   R.onPathsRenamed(({ from, to }) => {
     const fix = (p) => (p && (p === from || p.startsWith(from + '\\') || p.startsWith(from + '/')) ? to + p.slice(from.length) : p);
-    for (const list of [S.images, S.library || [], S.libList || [], S.viewer.list]) for (const x of list) x.path = fix(x.path);
+    for (const list of [S.images, S.viewer.list]) for (const x of list) x.path = fix(x.path);
     for (const q of S.queue) { q.dir = fix(q.dir); if (q.folder && /[\\/]/.test(q.folder)) q.folder = fix(q.folder); }
     saveQueue(); renderQueue();
   });
@@ -1440,20 +1369,12 @@ function wire() {
   $('#log-filters').addEventListener('click', (e) => { const b = e.target.closest('[data-lf]'); if (!b) return; S.logFilter = b.dataset.lf; $$('#log-filters button').forEach((x) => x.classList.toggle('on', x === b)); rerenderLog(); });
   $('#btn-log-export').onclick = () => R.exportLog(S.logs.map((l) => `${new Date(l.t).toISOString()}  ${(LOG_TAG[l.level] || l.level).padEnd(5)} ${l.msg}`).join('\r\n'));
 
-  // rules / settings / history / library
+  // rules / settings / history
   $('#rules-root').addEventListener('input', onRulesInput);
   $('#rules-root').addEventListener('change', (e) => { if (e.target.dataset.rt === 'ua') onRulesInput(e); if (e.target.classList.contains('preset-select') && e.target.value !== 'custom') applyPreset(e.target.value); });
   $('#rules-root').addEventListener('click', onRulesClick);
   $('#settings-root').addEventListener('click', onSettingsClick);
   $('#history-root').addEventListener('click', onHistoryClick);
-  $('#library-root').addEventListener('input', (e) => { if (e.target.id === 'lib-q') { S.libFilter.q = e.target.value; clearTimeout(S._lq); S._lq = setTimeout(() => { renderLibrary(false).then(() => { const i = $('#lib-q'); i.focus(); i.setSelectionRange(i.value.length, i.value.length); }); }, 250); } });
-  $('#library-root').addEventListener('change', (e) => { if (e.target.id === 'lib-session') { S.libFilter.session = e.target.value; renderLibrary(false); } if (e.target.id === 'lib-sort') { S.libFilter.sort = e.target.value; renderLibrary(false); } });
-  $('#library-root').addEventListener('click', (e) => {
-    const c = e.target.closest('[data-lchip]'); if (c) { S.libFilter.fmt = c.dataset.lchip; renderLibrary(false); return; }
-    if (e.target.id === 'lib-more') { S.libShown += 400; renderLibrary(false); return; }
-    const t = e.target.closest('[data-img]'); if (t) { if (tileClick(e, t.dataset.img)) return; openViewer(S.libList, S.libList.findIndex((x) => x.id === t.dataset.img)); }
-  });
-  $('#library-root').addEventListener('contextmenu', (e) => { const t = e.target.closest('[data-img]'); if (!t) return; e.preventDefault(); const i = S.libList.findIndex((x) => x.id === t.dataset.img); imageMenu(S.libList[i], e.clientX, e.clientY, S.libList, i); });
 
   // viewer
   $('#v-close').onclick = closeViewer;
@@ -1470,7 +1391,7 @@ function wire() {
   $('#v-copyurl').onclick = () => { R.copyText(currentViewerImg().url); toast('URL copied'); };
   $('#v-wall').onclick = async () => toast((await R.setWallpaper(currentViewerImg().path)) ? 'Wallpaper set' : "Couldn't set wallpaper", 'warn');
   $('#v-block').onclick = () => blockSite(currentViewerImg());
-  $('#v-delete').onclick = () => deleteImage(currentViewerImg(), true);
+  $('#v-delete').onclick = () => removeImage(currentViewerImg(), true);
   $('#v-palette').addEventListener('click', (e) => { const b = e.target.closest('[data-color]'); if (b) { R.copyText(b.dataset.color); toast(`Copied ${b.dataset.color}`); } });
   $('#viewer').addEventListener('click', (e) => { const a = e.target.closest('[data-ext]'); if (a) R.openExternal(a.dataset.ext); });
   const stage = $('#v-stage');
@@ -1532,18 +1453,17 @@ function onKey(e) {
     if (e.key === '-') return setZoom(V.scale / 1.25);
     if (e.key === '0') return setZoom(V.fit, true);
     if (e.key === '1') return setZoom(1, false);
-    if (e.key === 'Delete') return deleteImage(currentViewerImg(), true);
+    if (e.key === 'Delete') return removeImage(currentViewerImg(), true);
     return;
   }
   if (e.ctrlKey && e.key === 'Enter') { e.preventDefault(); return startReap(); }
   if (e.ctrlKey && e.shiftKey && (e.key === 'X' || e.key === 'x')) { e.preventDefault(); return R.stop(); }
   if (e.ctrlKey && (e.key === 'o' || e.key === 'O')) { e.preventDefault(); return $('#btn-import').click(); }
   if (e.ctrlKey && e.key === ',') { e.preventDefault(); return go('settings'); }
-  if (e.ctrlKey && ['1', '2', '3', '4', '5'].includes(e.key)) { e.preventDefault(); return go(['scan', 'library', 'history', 'rules', 'dupes'][+e.key - 1]); }
-  if (e.ctrlKey && (e.key === 'a' || e.key === 'A') && !typing(e) && (S.page === 'scan' || S.page === 'library')) { e.preventDefault(); gridList().forEach((x) => S.sel.add(x.id)); paintSelection(); return; }
+  if (e.ctrlKey && ['1', '2', '3', '4'].includes(e.key)) { e.preventDefault(); return go(['scan', 'dupes', 'history', 'rules'][+e.key - 1]); }
+  if (e.ctrlKey && (e.key === 'a' || e.key === 'A') && !typing(e) && S.page === 'scan') { e.preventDefault(); gridList().forEach((x) => S.sel.add(x.id)); paintSelection(); return; }
   if (e.key === 'Escape' && S.sel.size) return clearSelection();
-  if (e.key === 'Delete' && S.sel.size && !typing(e)) return deleteSelected();
-  if (e.ctrlKey && (e.key === 'f' || e.key === 'F') && S.page === 'library') { e.preventDefault(); const q = $('#lib-q'); if (q) q.focus(); return; }
+  if (e.key === 'Delete' && S.sel.size && !typing(e)) return removeSelected();
   if (e.key === ' ' && !typing(e) && S.running && S.page === 'scan') { e.preventDefault(); return S.paused ? R.resume() : R.pause(); }
 }
 

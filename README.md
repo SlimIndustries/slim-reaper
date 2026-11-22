@@ -31,11 +31,13 @@ Nothing to set up, no account, everything stays on your PC.
   <img src="docs/screenshot-test-url.png" width="440" alt="Test a URL before scanning">
 </p>
 
-## New in 1.4
+## New in 1.5
 
-- **History is off by default.** Nothing about your scans is saved to the PC; scans show in History only until you close the app. Turn on **Remember history** in Settings if you want it.
-- **Clear history** button on the History page and in Settings. Your image files are never touched.
-- Scans whose images you deleted (even while the app was closed) now drop out of History automatically.
+- **Nothing is remembered.** History, thumbnails and the duplicate memory last only until you close the app. Only your settings are saved.
+- **Removing never deletes files.** Remove an image or a scan inside Slim Reaper and it just leaves the app; the file stays in File Explorer.
+- **Library tab removed.** Browse your folders in File Explorer; History has an **Open folder** button for each scan.
+- **Clear** button on the History page empties it in one click.
+- Re-scanning a thread still skips images already in its folder.
 
 ## New in 1.3
 - **Several scans at once**: add a URL while something is running and it scans side by side (3 pages at once by
@@ -67,9 +69,7 @@ Nothing to set up, no account, everything stays on your PC.
   DeviantArt, Wallhaven, Wikipedia and image boards
 - **No more double saves** on thread/gallery sites: when a preview links to its full image, only the full one is kept
 - **Live sync**: delete images in File Explorer and they vanish from the app within seconds
-- **Delete from inside the app**: per scan (History → bin icon) or everything (Settings → Delete all) —
-  straight to the Recycle Bin, no File Explorer, so Windows can't lock it
-- **Select many images**: Ctrl/Shift-click or Ctrl+A → copy, move, delete, copy paths
+- **Select many images**: Ctrl/Shift-click or Ctrl+A → copy, move, remove from app, copy paths
 - **Drag images out** of the app into Discord, chats or folders
 - **Test a URL** before scanning: see what would be grabbed, nothing downloaded
 - **Folders**: right-click a URL → save it to its own folder · new folder per scan · auto-sort by
@@ -114,8 +114,8 @@ Nothing to set up, no account, everything stays on your PC.
 **The app**
 - Live image wall with format/size filters, live stats, speed graph, ETA and log
 - Pause / resume / stop / skip a URL / retry, queue survives restarts
-- Full image viewer: zoom, pan, filmstrip, palette, open, show in folder, copy image/URL, set as wallpaper, delete
-- Library of everything you've reaped (search, filter, sort) and full scan History with re-run and CSV reports
+- Full image viewer: zoom, pan, filmstrip, palette, open, show in folder, copy image/URL, set as wallpaper, remove from app
+- Scan History for the current session with open folder, re-run, rename and CSV reports
 - Presets (7 built in + your own), scheduled re-scans, clipboard watching, drag & drop URLs or .txt lists
 - Tray icon with pause/stop, Windows notifications, taskbar progress, sound, start with Windows
 - Accent colors: Ice, Toxic, Violet, Blood, Gold
@@ -133,7 +133,7 @@ Nothing to set up, no account, everything stays on your PC.
 | Viewer | ← → · wheel/+/− zoom · 0 fit · 1 actual size · Delete |
 
 ## Where things live
-- Your settings, history and memory: `%APPDATA%\Slim Reaper`
+- Your settings: `%APPDATA%\Slim Reaper` (nothing else is kept between runs)
 - Default save folder: `Pictures\Slim Reaper` (change it any time)
 
 Images belong to their creators — reap for personal use and check a site's terms before reposting.
