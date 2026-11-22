@@ -31,6 +31,12 @@ Nothing to set up, no account, everything stays on your PC.
   <img src="docs/screenshot-test-url.png" width="440" alt="Test a URL before scanning">
 </p>
 
+## New in 1.4
+
+- **History is off by default.** Nothing about your scans is saved to the PC; scans show in History only until you close the app. Turn on **Remember history** in Settings if you want it.
+- **Clear history** button on the History page and in Settings. Your image files are never touched.
+- Scans whose images you deleted (even while the app was closed) now drop out of History automatically.
+
 ## New in 1.3
 - **Several scans at once**: add a URL while something is running and it scans side by side (3 pages at once by
   default — change in Rules → Speed)

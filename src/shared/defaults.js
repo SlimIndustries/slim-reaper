@@ -97,6 +97,7 @@ const DEFAULT_APP = {
   confirmDelete: true,
   showSplash: true,
   activePreset: 'photos',
+  rememberHistory: false,  // off: nothing about past scans is written to this PC
   autoStartOnAdd: true,     // paste a URL and it starts reaping right away
   watchNewThreads: false    // automatically watch image-board / Reddit threads you add
 };
@@ -132,6 +133,6 @@ function mergeRules(base, over) {
   return out;
 }
 
-const SETTINGS_VERSION = 4;
+const SETTINGS_VERSION = 5;
 
 module.exports = { SETTINGS_VERSION, JUNK_PATTERNS, DEFAULT_RULES, DEFAULT_APP, BUILT_IN_PRESETS, ACCENTS, mergeRules };

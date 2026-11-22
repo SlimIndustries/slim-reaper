@@ -3,6 +3,7 @@
 //   settings.json  - rules, app settings, your presets, the queue, schedules
 //   memory.json    - fingerprints of every image ever saved (so re-scans only grab new ones)
 //   history/       - one file per scan with the list of images it saved
+//                    (only when "Remember history" is on; otherwise scans live in RAM until you close the app)
 const fs = require('fs');
 const path = require('path');
 const { DEFAULT_RULES, DEFAULT_APP, SETTINGS_VERSION, JUNK_PATTERNS, mergeRules } = require('../shared/defaults');
@@ -21,7 +22,7 @@ class Store {
   constructor(dir) {
     this.dir = dir;
     this.histDir = path.join(dir, 'history');
-    fs.mkdirSync(this.histDir, { recursive: true });
+    this.thumbDir = path.join(dir, 'thumbs');
     const s = readJson(path.join(dir, 'settings.json'), {});
     this.settings = {
       rules: mergeRules(DEFAULT_RULES, s.rules || {}),
@@ -51,7 +52,11 @@ class Store {
 
     const m = readJson(path.join(dir, 'memory.json'), { sha: {}, dh: [] });
     this.mem = { sha: new Map(Object.entries(m.sha || {})), dh: m.dh || [] };
-    this.history = readJson(path.join(this.histDir, 'index.json'), []);
+    this.keepHistory = !!this.settings.app.rememberHistory;
+    this.liveSessions = new Map();
+    if (!this.keepHistory) this._wipeHistoryFiles();
+    else fs.mkdirSync(this.histDir, { recursive: true });
+    this.history = this.keepHistory ? readJson(path.join(this.histDir, 'index.json'), []) : [];
     for (const h of this.history) {
       if (!h.finishedAt) {
         const imgs = readJson(path.join(this.histDir, h.id + '.json'), []);
@@ -64,7 +69,7 @@ class Store {
     // Remembered file fingerprints: path -> [size, mtime, sha, dhash, w, h, thumb]
     this.files = new Map(Object.entries(readJson(path.join(dir, 'files.json'), {})));
     this.timers = {};
-    this.liveSessions = new Map();
+    if (!this.keepHistory) for (const e of this.files.values()) e[6] = ''; // thumbnails were wiped above
     if (this._staleFixed) this._saveHistoryNow();
   }
 
@@ -136,10 +141,13 @@ class Store {
     return n;
   }
   // Forget remembered images whose files no longer exist (deleted while the app was closed).
+  // Also cleans History: deleted images drop out, and a scan whose images are all gone is removed.
   pruneMissing() {
     const missing = new Set();
     for (const p of new Set([...this.mem.sha.values(), ...this.mem.dh.map((e) => e[1])])) if (p && !fs.existsSync(p)) missing.add(p);
-    return this.forgetPaths(missing);
+    for (const h of this.history) for (const i of this.sessionImages(h.id)) if (i.path && !fs.existsSync(i.path)) missing.add(i.path);
+    if (missing.size) this.removeImages([...missing]);
+    return missing.size;
   }
   // A folder was renamed inside the app: point every record at the new place.
   renamePrefix(fromDir, toDir) {
@@ -183,22 +191,61 @@ class Store {
     const rec = this.history.find((h) => h.id === sessionId);
     if (rec) Object.assign(rec, { saved: stats.saved, skipped: stats.skipped, found: stats.found, bytes: stats.bytes, finishedAt: Date.now(), stopped: !!stopped });
     this._saveSessionNow(sessionId);
-    this.liveSessions.delete(sessionId);
+    if (this.keepHistory) this.liveSessions.delete(sessionId); // history off: it stays in RAM only
     this._saveHistoryNow();
   }
   _saveSessionNow(id) {
+    if (!this.keepHistory) return;
     const list = this.liveSessions.get(id);
     if (list) { try { writeJsonAtomic(path.join(this.histDir, id + '.json'), list); } catch (e) { console.error(e); } }
   }
-  _saveHistoryNow() { try { writeJsonAtomic(path.join(this.histDir, 'index.json'), this.history.slice(0, 1000)); } catch (e) { console.error(e); } }
+  _saveHistoryNow() { if (!this.keepHistory) return; try { writeJsonAtomic(path.join(this.histDir, 'index.json'), this.history.slice(0, 1000)); } catch (e) { console.error(e); } }
   sessionImages(id) {
     if (this.liveSessions.has(id)) return this.liveSessions.get(id).slice();
     return readJson(path.join(this.histDir, id + '.json'), []);
   }
   deleteSession(id) {
+    this._deleteThumbs(this.sessionImages(id));
     this.history = this.history.filter((h) => h.id !== id);
+    this.liveSessions.delete(id);
     try { fs.unlinkSync(path.join(this.histDir, id + '.json')); } catch { /* gone */ }
     this._saveHistoryNow();
+  }
+  // One-click "Clear history": every finished scan goes (a scan that is running right now stays).
+  // Image files are never touched.
+  clearHistory(runningId) {
+    for (const h of this.history.slice()) if (h.id !== runningId) this.deleteSession(h.id);
+    if (!runningId) this._wipeHistoryFiles();
+    if (this.keepHistory) fs.mkdirSync(this.histDir, { recursive: true });
+    this._saveHistoryNow();
+    return this.history;
+  }
+  // Turn "Remember history" on or off while the app is open.
+  setKeepHistory(on) {
+    on = !!on;
+    if (on === this.keepHistory) return;
+    this.keepHistory = on;
+    if (on) {
+      // Start saving from now, including scans from this run
+      fs.mkdirSync(this.histDir, { recursive: true });
+      for (const h of this.history) if (h.finishedAt) { this._saveSessionNow(h.id); this.liveSessions.delete(h.id); }
+      this._saveHistoryNow();
+    } else {
+      // Keep this run's scans in RAM, wipe everything on disk
+      for (const h of this.history) if (!this.liveSessions.has(h.id)) this.liveSessions.set(h.id, readJson(path.join(this.histDir, h.id + '.json'), []));
+      try { fs.rmSync(this.histDir, { recursive: true, force: true }); } catch { /* ignore */ }
+    }
+  }
+  _deleteThumbs(imgs) {
+    for (const i of imgs) {
+      if (i.thumb && i.thumb.startsWith(this.thumbDir)) { try { fs.unlinkSync(i.thumb); } catch { /* gone */ } }
+    }
+  }
+  // Remove saved history and preview thumbnails from disk (image files are never touched)
+  _wipeHistoryFiles() {
+    try { fs.rmSync(this.histDir, { recursive: true, force: true }); } catch { /* ignore */ }
+    try { fs.rmSync(this.thumbDir, { recursive: true, force: true }); } catch { /* ignore */ }
+    if (this.files) { for (const e of this.files.values()) e[6] = ''; this._later('files', () => this._saveFilesNow(), 1000); }
   }
   library(limit = 3000) {
     const out = [];
@@ -215,19 +262,30 @@ class Store {
     const gone = new Set(paths);
     if (!gone.size) return 0;
     let changed = 0;
+    const emptied = [];
     for (const h of this.history) {
       const live = this.liveSessions.get(h.id);
-      if (live) { for (let i = live.length - 1; i >= 0; i--) if (gone.has(live[i].path)) { live.splice(i, 1); changed++; } continue; }
+      if (live) {
+        const had = live.length;
+        for (let i = live.length - 1; i >= 0; i--) if (gone.has(live[i].path)) { this._deleteThumbs([live[i]]); live.splice(i, 1); changed++; }
+        if (live.length !== had) h.saved = Math.max(0, (h.saved || 0) - (had - live.length));
+        if (had && !live.length && h.finishedAt) emptied.push(h.id);
+        continue;
+      }
       const p = path.join(this.histDir, h.id + '.json');
       const arr = readJson(p, null);
       if (!arr) continue;
       const kept = arr.filter((x) => !gone.has(x.path));
       if (kept.length !== arr.length) {
         changed += arr.length - kept.length;
+        this._deleteThumbs(arr.filter((x) => gone.has(x.path)));
         try { writeJsonAtomic(p, kept); } catch { /* ignore */ }
         h.saved = Math.max(0, (h.saved || 0) - (arr.length - kept.length));
+        if (!kept.length) emptied.push(h.id);
       }
     }
+    // A scan whose images were all deleted disappears from History
+    for (const id of emptied) this.deleteSession(id);
     this.forgetFiles(paths);
     this.forgetPaths(gone);
     if (changed) this._saveHistoryNow();
@@ -238,19 +296,8 @@ class Store {
     for (const h of this.history) for (const i of this.sessionImages(h.id)) out.push(i.path);
     return out;
   }
-  removeImageEverywhere(file) {
-    for (const h of this.history) {
-      const list = this.liveSessions.get(h.id) || null;
-      if (list) { const i = list.findIndex((x) => x.path === file); if (i >= 0) list.splice(i, 1); continue; }
-      const p = path.join(this.histDir, h.id + '.json');
-      const arr = readJson(p, null);
-      if (arr && arr.some((x) => x.path === file)) {
-        try { writeJsonAtomic(p, arr.filter((x) => x.path !== file)); } catch { /* ignore */ }
-        h.saved = Math.max(0, (h.saved || 0) - 1);
-      }
-    }
-    this._saveHistoryNow();
-  }
+  removeImageEverywhere(file) { if (file) this.removeImages([file]); }
+
 }
 
 module.exports = { Store };

@@ -36,7 +36,7 @@ const eventBuffer = [];
 let flushTimer = null;
 let watcher = null;
 let dupesAbort = null;
-const thumbDir = () => path.join(app.getPath('userData'), 'thumbs');
+const thumbDir = () => store.thumbDir;
 
 function defaultOutDir() { return path.join(app.getPath('pictures'), 'Slim Reaper'); }
 function send(channel, payload) { if (mainWin && !mainWin.isDestroyed()) mainWin.webContents.send(channel, payload); }
@@ -93,7 +93,7 @@ function shutdown() {
   shuttingDown = true;
   quitting = true;
   try { if (engine && engine.running) engine.stop(); } catch { /* ignore */ }
-  try { if (store) store.flushAll(); } catch { /* ignore */ }
+  try { if (store) { store.flushAll(); if (!store.keepHistory) store._wipeHistoryFiles(); store._saveFilesNow(); } } catch { /* ignore */ }
   clearInterval(clipboardTimer);
   try { if (watcher) watcher.close(); } catch { /* ignore */ }
   if (dupesAbort) dupesAbort.abort();
@@ -495,6 +495,7 @@ function registerIpc() {
   ipcMain.handle('save-settings', (e, patch) => {
     store.saveSettings(patch);
     if (patch.app) {
+      if ('rememberHistory' in patch.app) store.setKeepHistory(!!patch.app.rememberHistory);
       if ('outputDir' in patch.app && watcher) watcher.watch([store.settings.app.outputDir]);
       if ('clipboardWatch' in patch.app) setClipboardWatch(!!store.settings.app.clipboardWatch);
       if ('launchAtStartup' in patch.app) { try { app.setLoginItemSettings({ openAtLogin: !!patch.app.launchAtStartup, path: process.env.PORTABLE_EXECUTABLE_FILE || process.execPath, args: ['--hidden'] }); } catch { /* ignore */ } }
@@ -567,6 +568,7 @@ function registerIpc() {
   ipcMain.handle('get-library', (e, limit) => store.library(limit || 3000));
   ipcMain.handle('get-history', () => store.history);
   ipcMain.handle('delete-session', (e, id) => { store.deleteSession(id); return store.history; });
+  ipcMain.handle('clear-history', () => { const running = engine.running && currentSession ? currentSession.id : null; store.clearHistory(running); return store.history; });
   ipcMain.handle('export-report', async (e, id) => {
     const rec = store.history.find((h) => h.id === id);
     const r = await dialog.showSaveDialog(mainWin, { title: 'Export scan report', defaultPath: `slim-reaper-${id}.csv`, filters: [{ name: 'CSV', extensions: ['csv'] }] });

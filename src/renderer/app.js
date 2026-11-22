@@ -866,9 +866,14 @@ async function savePresetDialog() {
 async function renderHistory() {
   const root = $('#history-root');
   const hist = await R.getHistory();
+  const keep = !!S.app.rememberHistory;
   const totals = hist.reduce((a, h) => ({ saved: a.saved + (h.saved || 0), bytes: a.bytes + (h.bytes || 0) }), { saved: 0, bytes: 0 });
   root.innerHTML = `
-    <div class="page-head"><div><h1>History</h1><p>${hist.length ? `${fmtNum(hist.length)} scans · ${fmtNum(totals.saved)} images · ${fmtBytes(totals.bytes)} reaped all-time` : 'Every scan you run shows up here.'}</p></div></div>
+    <div class="page-head"><div><h1>History</h1><p>${hist.length ? `${fmtNum(hist.length)} scans · ${fmtNum(totals.saved)} images · ${fmtBytes(totals.bytes)} reaped ${keep ? 'all-time' : 'this session'}` : (keep ? 'Every scan you run shows up here.' : 'Scans you run show up here until you close Slim Reaper.')}</p></div>
+      <div style="display:flex;gap:8px;align-items:center">${hist.length ? `<button class="btn sm danger" data-hclear>${ico('trash', 14)} Clear history</button>` : ''}</div></div>
+    <div class="rowx hist-mode" style="margin-bottom:14px;padding:12px 16px;border:1px solid var(--line);border-radius:12px;background:var(--panel)">
+      <div class="lbl"><div>${keep ? 'History is ON' : 'History is OFF'}</div><div class="sub">${keep ? 'Past scans are saved on this PC between runs.' : 'Nothing about your scans is saved to this PC. Everything here disappears when you close the app.'}</div></div>
+      <div class="ctl"><button class="toggle" aria-pressed="${keep}" data-hkeep aria-label="Remember history"></button></div></div>
     <div class="hlist">${hist.map((h) => `
       <div class="hitem" data-h="${esc(h.id)}">
         <div class="thumbs" data-hthumbs="${esc(h.id)}"></div>
@@ -894,6 +899,12 @@ async function renderHistory() {
   }
 }
 async function onHistoryClick(e) {
+  if (e.target.closest('[data-hkeep]')) { await saveApp({ rememberHistory: !S.app.rememberHistory }); toast(S.app.rememberHistory ? 'History will be saved from now on' : 'History off — saved history wiped from this PC'); return renderHistory(); }
+  if (e.target.closest('[data-hclear]')) {
+    const r = await modal({ title: 'Clear history?', ok: 'Clear history', danger: true, body: `<div style="color:var(--text2);line-height:1.5">Removes every scan from History${S.running ? ' (except the one running now)' : ''}. <b>Your image files are not touched.</b></div>` });
+    if (!r) return;
+    await R.clearHistory(); S.library = null; toast('History cleared'); return renderHistory();
+  }
   const b = e.target.closest('[data-ha]'); if (!b) return;
   const id = b.closest('[data-h]').dataset.h;
   const hist = await R.getHistory(); const h = hist.find((x) => x.id === id); if (!h) return;
@@ -1004,6 +1015,8 @@ async function renderSettings() {
         ${sched.map((s) => `<div class="rowx"><div class="lbl"><div>${esc(s.name)}</div><div class="sub">${s.urls.length} URL${s.urls.length === 1 ? '' : 's'} · every ${s.everyHours}h · ${s.lastRun ? 'last ran ' + new Date(s.lastRun).toLocaleString() : 'not run yet'}</div></div><div class="ctl"><button class="btn sm ghost" data-sedit="${s.id}">Edit</button><button class="btn sm ghost icon" data-sdel="${s.id}" aria-label="Delete schedule">${ico('trash', 14)}</button><button class="toggle" aria-pressed="${!!s.enabled}" data-stog="${s.id}" aria-label="Enabled"></button></div></div>`).join('') || '<div class="rowx"><div class="lbl"><div class="sub">Re-scan your favorite pages automatically and only save new images. Needs the app running (tray is fine).</div></div></div>'}
       </section>
       <section class="card"><div class="ch">${ico('brain')}<h2>FILES & DATA</h2></div>
+        ${tog('rememberHistory', 'Remember history', 'Off: scans only show in History until you close the app, and nothing about them is saved to this PC. Turning it off wipes saved history. Duplicate skipping works either way.')}
+        <div class="rowx"><div class="lbl"><div>Clear history</div><div class="sub">Removes every scan from History. Image files stay where they are.</div></div><div class="ctl"><button class="btn sm" id="clear-hist">Clear history</button></div></div>
         <div class="rowx"><div class="lbl"><div>Delete all reaped images</div><div class="sub">Moves your whole save folder to the Recycle Bin and clears History — no File Explorer needed</div></div><div class="ctl"><button class="btn sm danger" id="del-all">Delete all…</button></div></div>
         <div class="rowx"><div class="lbl"><div>Default save folder</div><div class="sub mono" style="word-break:break-all">${esc(a.outputDir || S.st.defaultOutDir)}</div></div><div class="ctl"><button class="btn sm" id="set-folder">Change</button></div></div>
       </section>
@@ -1056,6 +1069,11 @@ async function onSettingsClick(e) {
   if (b.id === 'mem-forget') { if (!(await confirmBox('Forget all remembered images?', 'Future scans may save images you already have (unless they\'re still in the output folder).', 'Forget', true))) return; S.memoryCount = await R.forgetMemory(); renderSettings(); updateStatusBar(); return; }
   if (b.id === 'set-folder') return changeFolder().then(renderSettings);
   if (b.id === 'report-btn') return reportProblem();
+  if (b.id === 'clear-hist') {
+    const r = await modal({ title: 'Clear history?', ok: 'Clear history', danger: true, body: `<div style="color:var(--text2);line-height:1.5">Removes every scan from History. <b>Your image files are not touched.</b></div>` });
+    if (!r) return;
+    await R.clearHistory(); S.library = null; toast('History cleared'); return;
+  }
   if (b.id === 'del-all') {
     if (S.running) return toast('Stop the scan first', 'warn');
     const r = await modal({ title: 'Delete ALL reaped images?', ok: 'Delete everything', danger: true, body: `<div style="color:var(--text2);line-height:1.5">Moves <b class="mono">${esc(S.app.outputDir)}</b> and everything in it to the Recycle Bin, and clears History.</div><label style="flex-direction:row;align-items:center;gap:8px;color:var(--text2)"><input type="checkbox" name="forget" checked> Also forget them, so future scans can download them again</label>` });

@@ -31,6 +31,7 @@ contextBridge.exposeInMainWorld('reaper', {
   getLibrary: call('get-library'),
   getHistory: call('get-history'),
   deleteSession: call('delete-session'),
+  clearHistory: call('clear-history'),
   exportReport: call('export-report'),
   exportLog: call('export-log'),
   exportSettings: call('export-settings'),
