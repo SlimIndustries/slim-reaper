@@ -31,6 +31,9 @@ const ICONS = {
   filter: 'M4 6h16M7 12h10M10 18h4',
   target: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM12 12h.01',
   copy: 'M8 8h11v11H8zM5 16V5h11',
+  plus: 'M12 5v14M5 12h14',
+  check: 'M5 12l5 5 9-10',
+  cut: 'M6 6a2.5 2.5 0 1 0 0 .1M6 18a2.5 2.5 0 1 0 0 .1M8 7.5l12 9M8 16.5l12-9',
   save: 'M5 3h11l3 3v15H5zM8 3v6h8V3M8 21v-7h8v7',
   globe: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18',
   bolt: 'M13 2L4 14h7l-1 8 9-12h-7z',
@@ -484,6 +487,38 @@ function rerenderWall() {
   const list = S.images.filter(wallMatch).slice(-WALL_MAX).reverse();
   $('#wall').innerHTML = list.map((img) => tileHtml(img, false)).join('') + (S.images.length > WALL_MAX ? `<div class="more">Showing the newest ${WALL_MAX}. Everything is in your folder.</div>` : '');
   updateWallEmpty();
+}
+// Clear the Live Harvest grid. Images stay in their folders and History is untouched.
+function clearWall() {
+  if (!S.images.length) return;
+  const n = S.images.length;
+  S.images = []; S.sel.clear(); S.selAnchor = null;
+  rerenderWall(); updateWallEmpty(); renderChipsSoon(); updateSelBar();
+  toast(`Cleared ${fmtNum(n)} image${n === 1 ? '' : 's'} · files kept in your folders`);
+}
+// Right-click paste
+async function pasteAndAdd() {
+  const text = await R.readClipboard();
+  const urls = text ? await R.extractUrls(text) : [];
+  if (!urls.length) return toast('No URLs on the clipboard', 'warn');
+  addUrls(urls);
+}
+function urlBoxMenu(x, y) {
+  const box = $('#url-input');
+  const sel = box.value.slice(box.selectionStart, box.selectionEnd);
+  contextMenu(x, y, [
+    { label: 'Paste and add', icon: 'plus', fn: pasteAndAdd },
+    { label: 'Paste', icon: 'clipboard', fn: async () => {
+      const t = (await R.readClipboard()) || '';
+      const a = box.selectionStart, b = box.selectionEnd;
+      box.value = box.value.slice(0, a) + t.trim() + box.value.slice(b);
+      box.focus(); box.selectionStart = box.selectionEnd = a + t.trim().length;
+    } },
+    '-',
+    { label: 'Cut', icon: 'cut', fn: () => { if (!sel) return; R.copyText(sel); const a = box.selectionStart; box.value = box.value.slice(0, a) + box.value.slice(box.selectionEnd); box.focus(); box.selectionStart = box.selectionEnd = a; } },
+    { label: 'Copy', icon: 'copy', fn: () => { if (sel) R.copyText(sel); } },
+    { label: 'Select all', icon: 'check', fn: () => { box.focus(); box.select(); } }
+  ]);
 }
 function updateWallEmpty() { $('#wall-empty').classList.toggle('hidden', S.images.length > 0); }
 function imgById(id) { return S.images.find((x) => x.id === id); }
@@ -965,7 +1000,7 @@ async function renderSettings() {
         <div class="rowx"><div class="lbl"><div>Default save folder</div><div class="sub mono" style="word-break:break-all">${esc(a.outputDir || S.st.defaultOutDir)}</div></div><div class="ctl"><button class="btn sm" id="set-folder">Change</button></div></div>
       </section>
       <section class="card"><div class="ch">${ico('keyboard')}<h2>KEYBOARD SHORTCUTS</h2></div>
-        ${[['Start reaping', 'Ctrl + Enter'], ['Pause / resume', 'Space'], ['Stop', 'Ctrl + Shift + X'], ['Paste URLs from clipboard', 'Ctrl + V'], ['Import a URL list', 'Ctrl + O'], ['Scan · Dupes · History · Rules', 'Ctrl + 1 … 4'], ['Select several images', 'Ctrl/Shift + click · Ctrl + A'], ['Remove selected from the app', 'Delete'], ['Settings', 'Ctrl + ,'], ['Viewer: previous / next', '← →'], ['Viewer: zoom', 'Mouse wheel · + / − · 0 fit · 1 actual size'], ['Viewer: remove from the app', 'Delete']].map(([k, v]) => `<div class="rowx"><div class="lbl"><div>${k}</div></div><div class="ctl"><span class="times" style="font-size:12px">${v}</span></div></div>`).join('')}
+        ${[['Start reaping', 'Ctrl + Enter'], ['Pause / resume', 'Space'], ['Stop', 'Ctrl + Shift + X'], ['Paste URLs from clipboard', 'Ctrl + V · or right-click the URL box'], ['Import a URL list', 'Ctrl + O'], ['Scan · Dupes · History · Rules', 'Ctrl + 1 … 4'], ['Select several images', 'Ctrl/Shift + click · Ctrl + A'], ['Remove selected from the app', 'Delete'], ['Settings', 'Ctrl + ,'], ['Viewer: previous / next', '← →'], ['Viewer: zoom', 'Mouse wheel · + / − · 0 fit · 1 actual size'], ['Viewer: remove from the app', 'Delete']].map(([k, v]) => `<div class="rowx"><div class="lbl"><div>${k}</div></div><div class="ctl"><span class="times" style="font-size:12px">${v}</span></div></div>`).join('')}
       </section>
       <section class="card"><div class="ch">${ico('info')}<h2>ABOUT</h2></div>
         <div class="rowx" style="gap:18px;justify-content:flex-start"><div style="width:84px;height:96px">${window.reaperSvg({ text: true })}</div><div class="lbl"><div class="brand" style="font-size:22px;transform:skewX(-8deg);transform-origin:left"><b>SLIM</b> REAPER</div><div class="sub">Version ${esc(S.st.version)} · A Slim Industries app</div><div class="sub">slimindustries.apps@gmail.com</div></div></div>
@@ -1116,6 +1151,8 @@ async function copyMoveSelected(move) {
 function queueMenu(q, x, y) {
   const active = ACTIVE.includes(q.status);
   contextMenu(x, y, [
+    { label: 'Paste URLs', icon: 'clipboard', fn: pasteAndAdd },
+    '-',
     { label: 'Open in browser', icon: 'ext', fn: () => R.openExternal(q.url) },
     { label: 'Test this URL', icon: 'target', fn: () => testUrl(q.url) },
     { label: 'Copy URL', icon: 'link', fn: () => { R.copyText(q.url); toast('URL copied'); } },
@@ -1305,6 +1342,14 @@ function wire() {
   $('#url-input').addEventListener('paste', async (e) => {
     const text = e.clipboardData.getData('text');
     if (text && /\n/.test(text.trim())) { e.preventDefault(); const urls = await R.extractUrls(text); if (urls.length) addUrls(urls); }
+  });
+  $('#wall-clear').onclick = clearWall;
+  // Right-click to paste (Ctrl+V still works)
+  $('#url-input').addEventListener('contextmenu', (e) => { e.preventDefault(); urlBoxMenu(e.clientX, e.clientY); });
+  $('#qlist').addEventListener('contextmenu', (e) => {
+    if (e.target.closest('[data-q]')) return;
+    e.preventDefault();
+    contextMenu(e.clientX, e.clientY, [{ label: 'Paste URLs', icon: 'clipboard', fn: pasteAndAdd }]);
   });
   $('#btn-import').onclick = async () => { const urls = await R.importUrls(); if (urls.length) addUrls(urls); };
   $('#btn-folder').onclick = changeFolder;

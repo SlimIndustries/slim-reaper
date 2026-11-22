@@ -37,6 +37,8 @@ Nothing to set up, no account, everything stays on your PC.
 - **Removing never deletes files.** Remove an image or a scan inside Slim Reaper and it just leaves the app; the file stays in File Explorer.
 - **Library tab removed.** Browse your folders in File Explorer; History has an **Open folder** button for each scan.
 - **Clear** button on the History page empties it in one click.
+- **Clear** button on the Scan page empties the image grid (files stay in your folders).
+- **Right-click to paste**: right-click the URL box or the queue for Paste / Paste and add. Ctrl+V still works.
 - Re-scanning a thread still skips images already in its folder.
 
 ## New in 1.3

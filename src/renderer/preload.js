@@ -37,6 +37,7 @@ contextBridge.exposeInMainWorld('reaper', {
   forgetMemory: call('forget-memory'),
   trashFiles: call('trash-files'),
   removeFromApp: call('remove-from-app'),
+  readClipboard: call('read-clipboard'),
   copyFiles: call('copy-files'),
   startDrag: (paths) => ipcRenderer.send('start-drag', paths),
   previewUrl: call('preview-url'),

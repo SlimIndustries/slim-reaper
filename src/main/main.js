@@ -535,6 +535,7 @@ function registerIpc() {
   ipcMain.handle('set-wallpaper', (e, p) => setWallpaper(p));
   // Used only by the Duplicate Finder: everywhere else, removing an image just hides it in the app
   ipcMain.handle('trash-files', (e, paths) => trashFiles(paths));
+  ipcMain.handle('read-clipboard', () => clipboard.readText());
   ipcMain.handle('remove-from-app', (e, paths) => store.hideImages(paths || []));
   ipcMain.handle('copy-files', (e, opts) => copyFiles(opts));
   ipcMain.on('start-drag', (e, paths) => startDrag(e.sender, paths));
