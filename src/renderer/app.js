@@ -1019,12 +1019,20 @@ async function renderSettings() {
       <section class="card"><div class="ch">${ico('keyboard')}<h2>KEYBOARD SHORTCUTS</h2></div>
         ${[['Start reaping', 'Ctrl + Enter'], ['Pause / resume', 'Space'], ['Stop', 'Ctrl + Shift + X'], ['Paste URLs from clipboard', 'Ctrl + V · or right-click the URL box'], ['Import a URL list', 'Ctrl + O'], ['Scan · Dupes · History · Rules', 'Ctrl + 1 … 4'], ['Select several images', 'Ctrl/Shift + click · Ctrl + A'], ['Remove selected from the app', 'Delete'], ['Settings', 'Ctrl + ,'], ['Viewer: previous / next', '← →'], ['Viewer: zoom', 'Mouse wheel · + / − · 0 fit · 1 actual size'], ['Viewer: remove from the app', 'Delete']].map(([k, v]) => `<div class="rowx"><div class="lbl"><div>${k}</div></div><div class="ctl"><span class="times" style="font-size:12px">${v}</span></div></div>`).join('')}
       </section>
-      <section class="card"><div class="ch">${ico('info')}<h2>ABOUT</h2></div>
-        <div class="rowx" style="gap:18px;justify-content:flex-start"><div style="width:84px;height:96px">${window.reaperSvg({ text: true })}</div><div class="lbl"><div class="brand" style="font-size:22px;transform:skewX(-8deg);transform-origin:left"><b>SLIM</b> REAPER</div><div class="sub">Version ${esc(S.st.version)} · A Slim Industries app</div><div class="sub">slimindustries.apps@gmail.com</div></div></div>
+      <section class="card"><div class="ch">${ico('info')}<h2>HELP</h2></div>
         <div class="rowx"><div class="lbl"><div>Something not working?</div><div class="sub">Saves one file with the log and settings (no passwords) to send to Claude</div></div><div class="ctl"><button class="btn sm" id="report-btn">${ico('bug', 15)} Report a problem</button></div></div>
         <div class="rowx"><div class="lbl"><div class="sub" style="line-height:1.5">Images you save belong to their creators. Grab for personal use, and check a site's terms before reposting anything.</div></div></div>
       </section>
-    </div>`;
+    </div>
+    <footer class="app-footer">
+      <div class="af-logo">${window.reaperSvg({ text: false })}</div>
+      <div class="af-text">
+        <div><b>Slim Reaper</b> <span class="dim">v${esc(S.st.version)}</span></div>
+        <div>© ${new Date().getFullYear()} Slim Industries. All rights reserved.</div>
+        <div><a data-ext="mailto:slimindustries.apps@gmail.com">slimindustries.apps@gmail.com</a> · <a data-ext="https://github.com/SlimIndustries/slim-reaper">GitHub</a></div>
+        <div class="dim small">Powered by Electron and Chromium.</div>
+      </div>
+    </footer>`;
 }
 
 async function scheduleDialog(existing) {
@@ -1438,6 +1446,7 @@ function wire() {
   $('#rules-root').addEventListener('change', (e) => { if (e.target.dataset.rt === 'ua') onRulesInput(e); if (e.target.classList.contains('preset-select') && e.target.value !== 'custom') applyPreset(e.target.value); });
   $('#rules-root').addEventListener('click', onRulesClick);
   $('#settings-root').addEventListener('click', onSettingsClick);
+  $('#settings-root').addEventListener('click', (e) => { const l = e.target.closest('.app-footer [data-ext]'); if (l) R.openExternal(l.dataset.ext); });
   $('#settings-root').addEventListener('toggle', (e) => { if (e.target.classList && e.target.classList.contains('signins')) { S.signinsOpen = e.target.open; const sub = e.target.querySelector('summary .sub'); if (sub) sub.textContent = 'Click to ' + (e.target.open ? 'hide' : 'show'); } }, true);
   $('#history-root').addEventListener('click', onHistoryClick);
 

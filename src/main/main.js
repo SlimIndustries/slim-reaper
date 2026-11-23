@@ -567,7 +567,7 @@ function registerIpc() {
 
   ipcMain.handle('open-path', (e, p) => shell.openPath(p));
   ipcMain.handle('show-in-folder', (e, p) => { shell.showItemInFolder(p); return true; });
-  ipcMain.handle('open-external', (e, url) => { if (/^https?:/i.test(url)) shell.openExternal(url); return true; });
+  ipcMain.handle('open-external', (e, url) => { if (/^https?:/i.test(url) || url === 'mailto:slimindustries.apps@gmail.com') shell.openExternal(url); return true; });
   ipcMain.handle('copy-text', (e, t) => { lastClip = String(t); clipboard.writeText(lastClip); return true; });
   ipcMain.handle('copy-image', (e, p) => copyImageToClipboard(p));
   ipcMain.handle('set-wallpaper', (e, p) => setWallpaper(p));
